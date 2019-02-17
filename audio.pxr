@@ -1,6 +1,6 @@
 @ /audio root:audio {
   #%autostart true
-  #%praxis.version 4.1.0
+  #%praxis.version 4.1.1
   @ ./output audio:output {
     #%graph.x 699
     #%graph.y 237
@@ -221,10 +221,6 @@ import java.io.*;
 
 "
   }
-  @ ./start-trigger-1 core:start-trigger {
-    #%graph.x -310
-    #%graph.y 95
-  }
   @ ./filter-1 audio:fx:filter {
     #%graph.x 150
     #%graph.y 340
@@ -242,7 +238,6 @@ import java.io.*;
     .frequency 215.81035379812693
   }
   ~ ./fft!power-data ./send-1!in
-  ~ ./start-trigger-1!out ./player-1!play
   ~ ./player-1!out-1 ./filter-1!in-1
   ~ ./fft!out ./filter-2!in-1
   ~ ./filter-2!out-1 ./output!in-1

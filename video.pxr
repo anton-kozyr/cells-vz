@@ -1,25 +1,25 @@
 @ /video root:video {
   #%autostart true
-  #%praxis.version 4.1.0
+  #%praxis.version 4.1.1
   .renderer OpenGL
   .width 800
   .height 600
   .fps 60.0
   @ ./screen video:output {
-    #%graph.x 845
-    #%graph.y 29
+    #%graph.x 939
+    #%graph.y 342
     .always-on-top true
     .show-cursor true
   }
   @ ./player-1 video:player {
-    #%graph.x 217
+    #%graph.x 218
     #%graph.y 29
     .video [file "resources/horse.mp4"]
-    .position 0.30173400319216315
+    .position 0.6420865437593648
   }
   @ ./custom-1 video:custom {
-    #%graph.x 451
-    #%graph.y 341
+    #%graph.x 880
+    #%graph.y 106
     .code "import java.nio.file.Paths;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -54,22 +54,167 @@ import java.nio.file.Path;
     \}
             
 "
-    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAQx74mEKJazJCuaNMQT4YoEDPZUtAmRuHQBceED/u
-Ibw/2/NnP3HbAT9lG+c/MQidPxrtET8C1g0+2f/GPsvdHz6wscA+mjL8PovN4z59Ikc+WysjPkXk
-KT46oCo+JcsiPhs/Lj4PGws+BpAiPfZBYj3qjbs915cbPcp/WD2+Ygk9sbv/PakuYD2dqGg9lrG9
-PY7+uD2CSZ09iLIWPXw+Mj1rncc9ZF9GPVs57T1SBT49SHkKPUM79D01hjI9McC8PSlmwD0jjWE9
-IL4YPR1GJj0aLF49FRQcPQvntj0MuhE9ArHIPQEjzDzvq/A8+XdSPOY8PzzjdJg82e+IPNhjoTzP
-rLA80SYDPM2rnjzE+o08up+IPLjUoTy4Fmo8sl+SPK1UOjyrj2c8oLkEPKIjoDyjdgQ8ngaSPKE7
-1jybjcA8na8IPJfBkjyT0CY8kFkmPJIUJTyN0Rw8iuMOPIreMTyIEvs8hdsRPIQ5ozyCw/U8gTYk
-PH7//jx8hwk8eNxyPHYqADx0fbk8ca1JPHBw6DxuPgU8bKsSPGqBtjxoFcw8ZmVbPGS5CTxi3Ug8
-YXuPPGBWSjxe3HY8XY4APFxgHjxbQ0o8WjtfPFlCuzxYYAo8V4ujPFbIjzxWHNM8VXzsPFTyzDxU
-d+Y8VA2EPFOzGzxTaKw8UzAcPFMGOzxS7aw="
+    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAQbZ7B0L5K/xBoN5TQUU+T0DQj2dAhUCFQDWdOUAE
+o9I/yjXmP59/Vz+B/ZY/VQ9QPzOCED8ZpKQ/BUEOPue6CD7Jdkg+tJ8OPqJuBz6Qbjo+gtYuPm1k
+Hz5ZaUY+SH5lPjZsGj4ozK0+HAkZPhLk7z4ICwQ9/J1GPfCYzj3hRiw90yhuPclUUT26Nzk9skap
+PakELj2jE1Q9lzt7PZKHaT2LUYU9hUvZPYM+pz108wk9ZOasPV+C4D1a6Zk9TC8IPUew7T1Ejew9
+PztFPTTIsj0sI8I9NO0oPSHSXz0YXqw9GmWFPRD34D0LCP09DBfrPQXoaj0DGys9AP55PPxZKjz1
+uxc88KsZPOmTLjzlg8A83dzOPNph2DzViXs80CsRPM2ZwDzLtQE8xfYtPMJ7vTy/jRo8vHRgPLek
+Bzyz5DU8svtQPK6wMDysfvw8qd46PKdXWTyk93o8osBIPKBd2Dyec0c8nEquPJpoezyYj1g8lpRh
+PJTvNjyThlk8kdIsPJBPiTyO9LA8jZMQPIxBQjyK9vY8idOrPIizfzyHmEI8hpD5PIWXTDyEqfM8
+g8miPIL1SDyCLc48gXFzPIDBNTyAG6o8fwBcPH3gqTx82PQ8e+LVPHsCoTx6Nro8eX6jPHjblDx4
+S6s8d869PHdl5zx3EBA8ds2HPHad+zx2gbI="
   }
   @ ./start-trigger-1 core:start-trigger {
-    #%graph.x -4
-    #%graph.y 29
+    #%graph.x -334
+    #%graph.y 181
   }
-  ~ ./custom-1!out ./screen!in
+  @ ./cells-4 video:custom {
+    #%graph.x 653
+    #%graph.y 342
+    .code "import org.praxislive.video.render.ops.DifferenceOp;
+import processing.core.PApplet;
+
+
+    @In(1) PImage in1;
+    @In(2) PImage in2;
+    @In(3) PImage in3;
+    @In(4) PImage in4;
+    
+    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out1;
+    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out2;
+    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out3;
+    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out4;
+    
+    @P(1) double xc = width/2;
+    @P(2) double yc = height/2;
+    
+    @Override
+    public void setup() \{
+        xc = width/2;
+        yc = height/2;
+    \}
+    
+    @In(5)
+    public void moveCenter(double ignored) \{
+        xc = updateCoordInLimits(xc, width/4, width/4*3);
+        yc = updateCoordInLimits(yc, height/4, height/4*3);
+    \}
+
+    private double updateCoordInLimits(double current, double min, double max) \{
+        double i = 2;
+        double delta = random(-i, i);
+        if(delta + current > max) return current - delta;
+        else if (delta + current < min) return current - delta;
+        else return current + delta;
+    \}
+    
+    @Override
+    public void draw() \{
+        double xc = this.xc;
+        double yc = this.yc;
+        maskedImage(in1, out1, 0, 0, xc, yc);
+        maskedImage(in2, out2, xc, 0, width-xc, yc);
+        maskedImage(in3, out3, 0, yc, xc, height-yc);
+        maskedImage(in4, out4, xc, yc, width-xc, height-yc);
+    \}
+    
+    private void maskedImage(PImage in, PGraphics out, double x, double y, double w, double h) \{
+        out.clear();
+        out.noStroke();
+        out.blendMode(BlendMode.Blend);
+        out.fill(255);
+        out.rect(x, y, w, h);
+        out.blendMode(BlendMode.Mask);
+        out.image(in, 0, 0);
+        image(out, 0, 0);
+    \}
+"
+    .xc 398.05874336540967
+    .yc 271.29760053138466
+  }
+  @ ./capture-1 video:capture {
+    #%graph.x 31
+    #%graph.y 376
+    .zoom 1.0146823948778643
+  }
+  @ ./noise-1 video:source:noise {
+    #%graph.x 288
+    #%graph.y 472
+  }
+  @ ./circles video:custom {
+    #%graph.x 402
+    #%graph.y 580
+    .code "
+    @P(1) int count;
+            
+    LinkedList<Circle> l = new LinkedList<>();
+    
+    @Override
+    public void setup() \{
+        noStroke();
+        for(int i = 0; i<count; ++i) \{
+            l.add(new Circle());
+        \}
+    \}
+    
+    @In(1)
+    public void addCircle(double ignored) \{
+        l.add(new Circle());
+        l.removeFirst();
+    \}
+    
+    @Override
+    public void draw() \{
+        l.stream().forEach(Circle::draw);
+    \}
+    
+    private class Circle \{
+        private double x;
+        private double y;
+        private double d;
+        private double r;
+        private double g;
+        private double b;
+        
+        public Circle() \{
+            x = random(width);
+            y = random(width);
+            d = 50 + random(150);
+            r = randomColor();
+            g = randomColor();
+            b = randomColor();
+        \}
+        
+        private double randomColor() \{
+            return 100 + random(155);
+        \}
+        
+        public void draw() \{
+            fill(r, g, b);
+            ellipse(x, y, d, d);
+        \}
+    \}
+"
+    .count 10
+  }
+  @ ./timer-1 core:timing:timer {
+    #%graph.x 218
+    #%graph.y 568
+    .period 0.1
+  }
+  @ ./timer-2 core:timing:timer {
+    #%graph.x 492
+    #%graph.y 49
+    .period 0.001
+  }
   ~ ./start-trigger-1!out ./player-1!play
-  ~ ./player-1!out ./screen!in
+  ~ ./cells-4!out ./screen!in
+  ~ ./timer-1!out ./circles!add-circle
+  ~ ./circles!out ./cells-4!in-4
+  ~ ./noise-1!out ./cells-4!in-2
+  ~ ./capture-1!out ./cells-4!in-3
+  ~ ./player-1!out ./cells-4!in-1
+  ~ ./timer-2!out ./cells-4!move-center
+  ~ ./start-trigger-1!out ./capture-1!play
 }
