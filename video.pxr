@@ -1,0 +1,75 @@
+@ /video root:video {
+  #%autostart true
+  #%praxis.version 4.1.0
+  .renderer OpenGL
+  .width 800
+  .height 600
+  .fps 60.0
+  @ ./screen video:output {
+    #%graph.x 845
+    #%graph.y 29
+    .always-on-top true
+    .show-cursor true
+  }
+  @ ./player-1 video:player {
+    #%graph.x 217
+    #%graph.y 29
+    .video [file "resources/horse.mp4"]
+    .position 0.30173400319216315
+  }
+  @ ./custom-1 video:custom {
+    #%graph.x 451
+    #%graph.y 341
+    .code "import java.nio.file.Paths;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+
+    @P(1) float\[\] fft;
+    float max = 0.187f; // found by experiment
+    
+    @Override
+    public void setup() \{
+
+    \}
+    
+    @Override
+    public void draw() \{
+//        log(ERROR, \"\" +fft.length);
+        if (fft.length == 0) \{
+            return;
+        \}
+        blendMode(BLEND);
+        float avg = Math.abs(fft\[fft.length/2\]);
+        for(int i = fft.length/2; i<fft.length; ++i) \{
+            float c = Math.abs(fft\[i\]);
+            avg = (avg + c)/2;
+        \}
+        float f = (avg/max*100.0f);
+//        log(ERROR, \"AVG: \"+f);
+        fill(Math.min(255f*f, 255f), 0, 0);
+        rect(0, 0, width, height);
+    \}
+            
+"
+    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAQx74mEKJazJCuaNMQT4YoEDPZUtAmRuHQBceED/u
+Ibw/2/NnP3HbAT9lG+c/MQidPxrtET8C1g0+2f/GPsvdHz6wscA+mjL8PovN4z59Ikc+WysjPkXk
+KT46oCo+JcsiPhs/Lj4PGws+BpAiPfZBYj3qjbs915cbPcp/WD2+Ygk9sbv/PakuYD2dqGg9lrG9
+PY7+uD2CSZ09iLIWPXw+Mj1rncc9ZF9GPVs57T1SBT49SHkKPUM79D01hjI9McC8PSlmwD0jjWE9
+IL4YPR1GJj0aLF49FRQcPQvntj0MuhE9ArHIPQEjzDzvq/A8+XdSPOY8PzzjdJg82e+IPNhjoTzP
+rLA80SYDPM2rnjzE+o08up+IPLjUoTy4Fmo8sl+SPK1UOjyrj2c8oLkEPKIjoDyjdgQ8ngaSPKE7
+1jybjcA8na8IPJfBkjyT0CY8kFkmPJIUJTyN0Rw8iuMOPIreMTyIEvs8hdsRPIQ5ozyCw/U8gTYk
+PH7//jx8hwk8eNxyPHYqADx0fbk8ca1JPHBw6DxuPgU8bKsSPGqBtjxoFcw8ZmVbPGS5CTxi3Ug8
+YXuPPGBWSjxe3HY8XY4APFxgHjxbQ0o8WjtfPFlCuzxYYAo8V4ujPFbIjzxWHNM8VXzsPFTyzDxU
+d+Y8VA2EPFOzGzxTaKw8UzAcPFMGOzxS7aw="
+  }
+  @ ./start-trigger-1 core:start-trigger {
+    #%graph.x -4
+    #%graph.y 29
+  }
+  ~ ./custom-1!out ./screen!in
+  ~ ./start-trigger-1!out ./player-1!play
+  ~ ./player-1!out ./screen!in
+}
