@@ -1,0 +1,8 @@
+# GStreamer
+http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/
+
+# Virtual video device
+https://github.com/umlaeute/v4l2loopback
+
+# Weird issue with GStreamer failing to play to v4l2sink
+https://github.com/umlaeute/v4l2loopback/issues/116
