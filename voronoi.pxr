@@ -13,8 +13,9 @@
     .show-cursor true
   }
   @ ./timer-3 core:timing:timer {
-    #%graph.x 212
-    #%graph.y 290
+    #%graph.x 362
+    #%graph.y 213
+    .period 0.5
   }
   @ ./vor video:gl:p2d {
     #%graph.x 798
@@ -25,6 +26,9 @@
     @P(1) @Type.Number(def = 80, min = 1, max = 200) double deltaMove;
     @P(2) @Type.Number(def = 1, min = 0, max = 15) double timeToMove;
     @P(3) @Type.Integer(def = 6, min = 2, max = 7) @OnChange(\"initPoints\") int cellsCount;
+    
+    @P(4) @Type.Number(def = 2, min = 0, max = 12) @OnChange(\"updateEdgeWidth\") double edgeWidthExp;
+    double edgeWidth;
 
     Color\[\] colors;
     PointD\[\] points;
@@ -58,6 +62,11 @@
         smooth(255);
         background(0);
         initPoints();
+        updateEdgeWidth();
+    \}
+    
+    void updateEdgeWidth() \{
+        edgeWidth = pow(2, edgeWidthExp);
     \}
     
     void initPoints() \{
@@ -138,8 +147,12 @@
             shape(r);
         \}
         
-        strokeWeight(4);
-        stroke(255);
+        if(edgeWidthExp == 0) \{
+            noStroke();
+        \} else \{
+            strokeWeight(edgeWidth);
+            stroke(255);
+        \}
 
         // draw edges of Voronoi diagram
         for (VoronoiEdge edge: results.voronoiEdges) \{
@@ -172,7 +185,8 @@
     \}
     Color randomColor() \{ return new Color(random(256), random(256), random(256)); \}
 "
-    .time-to-move 4.35483870967742
+    .edge-width-exp 4.838709677419354
   }
   ~ ./vor!out ./screen!in
+  ~ ./timer-3!out ./vor!move
 }
