@@ -1,0 +1,178 @@
+@ /voronoi root:video {
+  #%autostart true
+  #%praxis.version 4.1.1
+  .renderer OpenGL
+  .width 800
+  .height 600
+  .fps 60.0
+  @ ./screen video:output {
+    #%graph.x 1100
+    #%graph.y 365
+    .rotation 0
+    .always-on-top true
+    .show-cursor true
+  }
+  @ ./timer-3 core:timing:timer {
+    #%graph.x 212
+    #%graph.y 290
+  }
+  @ ./vor video:gl:p2d {
+    #%graph.x 798
+    #%graph.y 202
+    .code "import org.kynosarges.tektosyne.geometry.*;
+
+
+    @P(1) @Type.Number(def = 80, min = 1, max = 200) double deltaMove;
+    @P(2) @Type.Number(def = 1, min = 0, max = 15) double timeToMove;
+    @P(3) @Type.Integer(def = 6, min = 2, max = 7) @OnChange(\"initPoints\") int cellsCount;
+
+    Color\[\] colors;
+    PointD\[\] points;
+    
+    Property\[\]\[\] moves;
+    
+    RectD clip;
+    VoronoiResults results;
+    
+    @Inject Property m0x;
+    @Inject Property m1x;
+    @Inject Property m2x;
+    @Inject Property m3x;
+    @Inject Property m4x;
+    @Inject Property m5x;
+    @Inject Property m6x;
+    
+    @Inject Property m0y;
+    @Inject Property m1y;
+    @Inject Property m2y;
+    @Inject Property m3y;
+    @Inject Property m4y;
+    @Inject Property m5y;
+    @Inject Property m6y;
+    
+    @Inject PArray movesX;
+    @Inject PArray movesY;
+    
+    @Override
+    public void setup() \{
+        smooth(255);
+        background(0);
+        initPoints();
+    \}
+    
+    void initPoints() \{
+        final RectD bounds = new RectD(0.1 * width, 0.1 * height, 0.9 * width, 0.9 * height);
+        points = GeoUtils.randomPoints(cellsCount, bounds, new PointDComparatorY(0), 10);
+
+        moves = new Property\[cellsCount\]\[\];
+        moves\[0\] = new Property\[\] \{m0x, m0y\};
+        moves\[1\] = new Property\[\] \{m1x, m1y\};
+        if(cellsCount > 2) moves\[2\] = new Property\[\] \{m2x, m2y\};
+        if(cellsCount > 3) moves\[3\] = new Property\[\] \{m3x, m3y\};
+        if(cellsCount > 4) moves\[4\] = new Property\[\] \{m4x, m4y\};
+        if(cellsCount > 5) moves\[5\] = new Property\[\] \{m5x, m5y\};
+        if(cellsCount > 6) moves\[6\] = new Property\[\] \{m6x, m6y\};
+
+        colors = new Color\[cellsCount\];
+        for(int i=0; i<cellsCount; ++i) \{
+            colors\[i\] = randomColor();
+            moves\[i\]\[0\].set(points\[i\].x);
+            moves\[i\]\[1\].set(points\[i\].y);
+        \}
+        
+        clip = new RectD(0, 0, width, height);
+        results = Voronoi.findAll(points, clip);
+    \}
+    
+    @T(1)
+    public void move() \{
+        
+        for(int i=0; i<cellsCount; ++i) \{
+            Property\[\] move = moves\[i\];
+
+            double nx = -1;
+            double ny = -1;
+            double deltaMove = this.deltaMove;
+            
+            // ensure new coordinate is inside viewport
+            while (nx < 0 || nx > width || ny < 0 || ny > height) \{
+                double alpha = random(PI*2);
+                double dx = cos(alpha) * deltaMove;
+                double dy = sin(alpha) * deltaMove;
+                nx = d(move\[0\]) + dx;
+                ny = d(move\[1\]) + dy;
+                deltaMove *= 0.7;
+            \}
+            
+            move\[0\].to(nx).in(timeToMove).easing(Easing.cubicOut);
+            move\[1\].to(ny).in(timeToMove).easing(Easing.cubicOut);
+        \}
+    \}
+
+    @Override
+    public void draw() \{
+        boolean moved = false;
+        for(int i=0; i<cellsCount; ++i) \{
+            PointD oldPoint = points\[i\];
+            PointD newPoint = new PointD(d(moves\[i\]\[0\]), d(moves\[i\]\[1\]));
+            points\[i\] = newPoint;
+            moved |= oldPoint != newPoint;
+        \}
+        if(moved) results = Voronoi.findAll(points, clip);
+        
+        
+        noStroke();
+
+        // draw interior of Voronoi regions
+        int j=0;
+        for (PointD\[\] region: results.voronoiRegions()) \{
+            Color c = colors\[j++\];
+            fill(c.r, c.g, c.b);
+            PShape r = createShape();
+            r.beginShape();
+            double\[\] coords = PointD.toDoubles(region);
+            for(int i=0; i<coords.length/2; i+=1) \{
+                r.vertex(coords\[i*2\], coords\[i*2+1\]);
+            \}
+            r.endShape();
+            shape(r);
+        \}
+        
+        strokeWeight(4);
+        stroke(255);
+
+        // draw edges of Voronoi diagram
+        for (VoronoiEdge edge: results.voronoiEdges) \{
+            final PointD start = results.voronoiVertices\[edge.vertex1\];
+            final PointD end = results.voronoiVertices\[edge.vertex2\];
+
+            line(start.x, start.y, end.x, end.y);
+        \}
+
+        
+        if (false) \{
+            // draw generator points
+            for (int i=0; i<points.length; ++i) \{
+                PointD point = points\[i\];
+                textSize(20);
+                text(i, point.x, point.y);
+            \}
+        \}
+    \}
+    
+    static class Point \{
+      double x,y; Color c;
+      Point(double x,double y, Color c) \{ this.x=x; this.y=y; this.c=c; \}
+    \}
+    Point randomPoint() \{ return new Point(random(width), random(height), randomColor()); \}
+    
+    static class Color \{
+        double r, g, b;
+        Color(double r, double g, double b) \{ this.r=r; this.g=g; this.b=b; \}
+    \}
+    Color randomColor() \{ return new Color(random(256), random(256), random(256)); \}
+"
+    .time-to-move 4.35483870967742
+  }
+  ~ ./vor!out ./screen!in
+}

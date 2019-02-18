@@ -6,20 +6,20 @@
   .height 600
   .fps 60.0
   @ ./screen video:output {
-    #%graph.x 939
-    #%graph.y 342
+    #%graph.x 1952
+    #%graph.y 181
     .always-on-top true
     .show-cursor true
   }
   @ ./player-1 video:player {
-    #%graph.x 218
-    #%graph.y 29
+    #%graph.x 614
+    #%graph.y 31
     .video [file "resources/horse.mp4"]
-    .position 0.6420865437593648
+    .position 0.6145061775160824
   }
   @ ./custom-1 video:custom {
-    #%graph.x 880
-    #%graph.y 106
+    #%graph.x 537
+    #%graph.y 1157
     .code "import java.nio.file.Paths;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -54,40 +54,40 @@ import java.nio.file.Path;
     \}
             
 "
-    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAQbZ7B0L5K/xBoN5TQUU+T0DQj2dAhUCFQDWdOUAE
-o9I/yjXmP59/Vz+B/ZY/VQ9QPzOCED8ZpKQ/BUEOPue6CD7Jdkg+tJ8OPqJuBz6Qbjo+gtYuPm1k
-Hz5ZaUY+SH5lPjZsGj4ozK0+HAkZPhLk7z4ICwQ9/J1GPfCYzj3hRiw90yhuPclUUT26Nzk9skap
-PakELj2jE1Q9lzt7PZKHaT2LUYU9hUvZPYM+pz108wk9ZOasPV+C4D1a6Zk9TC8IPUew7T1Ejew9
-PztFPTTIsj0sI8I9NO0oPSHSXz0YXqw9GmWFPRD34D0LCP09DBfrPQXoaj0DGys9AP55PPxZKjz1
-uxc88KsZPOmTLjzlg8A83dzOPNph2DzViXs80CsRPM2ZwDzLtQE8xfYtPMJ7vTy/jRo8vHRgPLek
-Bzyz5DU8svtQPK6wMDysfvw8qd46PKdXWTyk93o8osBIPKBd2Dyec0c8nEquPJpoezyYj1g8lpRh
-PJTvNjyThlk8kdIsPJBPiTyO9LA8jZMQPIxBQjyK9vY8idOrPIizfzyHmEI8hpD5PIWXTDyEqfM8
-g8miPIL1SDyCLc48gXFzPIDBNTyAG6o8fwBcPH3gqTx82PQ8e+LVPHsCoTx6Nro8eX6jPHjblDx4
-S6s8d869PHdl5zx3EBA8ds2HPHad+zx2gbI="
+    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   }
   @ ./start-trigger-1 core:start-trigger {
-    #%graph.x -334
-    #%graph.y 181
+    #%graph.x 245
+    #%graph.y 347
   }
   @ ./cells-4 video:custom {
-    #%graph.x 653
-    #%graph.y 342
-    .code "import org.praxislive.video.render.ops.DifferenceOp;
-import processing.core.PApplet;
-
+    #%graph.x 1722
+    #%graph.y 31
+    .code "
 
     @In(1) PImage in1;
     @In(2) PImage in2;
     @In(3) PImage in3;
     @In(4) PImage in4;
     
-    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out1;
-    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out2;
-    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out3;
-    @OffScreen(format = OffScreen.Format.ARGB) PGraphics out4;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out1;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out2;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out3;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out4;
     
     @P(1) double xc = width/2;
     @P(2) double yc = height/2;
+    
+    @P(7) double h = height/2;
     
     @Override
     public void setup() \{
@@ -96,14 +96,24 @@ import processing.core.PApplet;
     \}
     
     @In(5)
-    public void moveCenter(double ignored) \{
-        xc = updateCoordInLimits(xc, width/4, width/4*3);
-        yc = updateCoordInLimits(yc, height/4, height/4*3);
+    public void moveHorisontalSplit(double value) \{
+        yc = height/2*(1 + value);
+    \}
+    
+    @In(6)
+    public void moveVeticalSplit(double value) \{
+        xc = width/2*(1 + value);
     \}
 
-    private double updateCoordInLimits(double current, double min, double max) \{
+    private double updateCoordInLimitsRandomly(double current, double min, double max) \{
         double i = 2;
         double delta = random(-i, i);
+        if(delta + current > max) return current - delta;
+        else if (delta + current < min) return current - delta;
+        else return current + delta;
+    \}
+
+    private double updateCoordInLimits(double delta, double current, double min, double max) \{
         if(delta + current > max) return current - delta;
         else if (delta + current < min) return current - delta;
         else return current + delta;
@@ -117,35 +127,87 @@ import processing.core.PApplet;
         maskedImage(in2, out2, xc, 0, width-xc, yc);
         maskedImage(in3, out3, 0, yc, xc, height-yc);
         maskedImage(in4, out4, xc, yc, width-xc, height-yc);
+        h = height/2;
     \}
     
     private void maskedImage(PImage in, PGraphics out, double x, double y, double w, double h) \{
-        out.clear();
         out.noStroke();
         out.blendMode(BlendMode.Blend);
         out.fill(255);
         out.rect(x, y, w, h);
         out.blendMode(BlendMode.Mask);
         out.image(in, 0, 0);
-        image(out, 0, 0);
+        copy(out);
+        release(out);
     \}
+/* Help from Neil:
+    
+    @In(1) PImage in1;
+    @In(2) PImage in2;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out1;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out2;
+
+    @P(1) Property division;
+
+    @Override
+    public void setup() \{
+        out1.noStroke();
+        out2.noStroke();
+        out1.background(0, 0);
+        out2.background(0, 0);
+    \}
+
+    @Override
+    public void draw() \{
+
+        double div = d(division);
+
+        // show only left half of first input
+//        out1.clear();
+        out1.blendMode(BLEND);
+        out1.rect(0, 0, div * width, height);
+        out1.blendMode(BlendMode.Mask);
+        out1.image(in1, 0, 0);
+
+        // shod only right half of second input
+//        out2.clear();
+        out2.blendMode(BLEND);
+        out2.rect(div * width, 0, width, height);
+        out2.blendMode(BlendMode.Mask);
+        out2.image(in2, 0, 0);
+
+        image(out1, 0, 0);
+
+        // Next overrides everything rendered by out2
+        // As a result left half - black rectangle, right half - right part
+        // of second input (as expected)
+        image(out2, 0, 0);
+    \}
+
+    @T(1) void trigger() \{
+        division.to(random(0,1)).in(1).easeInOut();
+    \}    
+    */    
 "
-    .xc 398.05874336540967
-    .yc 271.29760053138466
+    .xc 572.9839348361155
+    .yc 269.45710572137995
+    .h 300.0
   }
   @ ./capture-1 video:capture {
-    #%graph.x 31
-    #%graph.y 376
+    #%graph.x 608
+    #%graph.y 496
+    .device 1
     .zoom 1.0146823948778643
   }
   @ ./noise-1 video:source:noise {
-    #%graph.x 288
-    #%graph.y 472
+    #%graph.x 1013
+    #%graph.y 181
   }
   @ ./circles video:custom {
-    #%graph.x 402
-    #%graph.y 580
+    #%graph.x 1248
+    #%graph.y 367
     .code "
+
     @P(1) int count;
             
     LinkedList<Circle> l = new LinkedList<>();
@@ -199,22 +261,140 @@ import processing.core.PApplet;
     .count 10
   }
   @ ./timer-1 core:timing:timer {
-    #%graph.x 218
-    #%graph.y 568
+    #%graph.x 1015
+    #%graph.y 367
     .period 0.1
   }
   @ ./timer-2 core:timing:timer {
-    #%graph.x 492
-    #%graph.y 49
-    .period 0.001
+    #%graph.x 1015
+    #%graph.y 568
+    .period 5
+  }
+  @ ./animator-2 core:timing:animator {
+    #%graph.x 1248
+    #%graph.y 568
+    .code "
+
+    @T(0)
+    void randomise() \{
+        to = random(minValue, maxValue);
+        toChanged();
+    \}
+    
+    @P(1) @Type.Number @Transient
+    double to;
+    
+    @P(2) @Type.Number @OnChange(\"valueChanged\")
+    Property value;
+    
+    @P(3) @Type.Number(min = 0, max = 60, def = 0)
+    double time;
+    
+    @P(4) @Type.Number(def = -1)
+    double minValue;
+    
+    @P(5) @Type.Number(def = 1)
+    double maxValue;
+    
+    @Out(1) Output out;
+    boolean active;
+
+    @Override
+    public void update() \{
+        if (value.isAnimating()) \{
+            out.send(d(value));
+            active = true;
+        \} else if (active) \{
+            out.send(to);
+            active = false;
+        \}
+    \}
+    
+    void toChanged() \{
+        value.to(to).in(time);
+        active = true;
+    \}
+    
+    void valueChanged() \{
+        to = d(value);
+        active = false;
+        out.send(to);
+    \}
+    
+"
+    .value -0.1019042501211084
+    .time 10
+  }
+  @ ./timer-4 core:timing:timer {
+    #%graph.x 1015
+    #%graph.y 809
+    .period 6
+  }
+  @ ./animator-3 core:timing:animator {
+    #%graph.x 1248
+    #%graph.y 809
+    .code "
+
+    @T(0)
+    void randomise() \{
+        to = random(minValue, maxValue);
+        toChanged();
+    \}
+    
+    @P(1) @Type.Number @Transient
+    double to;
+    
+    @P(2) @Type.Number @OnChange(\"valueChanged\")
+    Property value;
+    
+    @P(3) @Type.Number(min = 0, max = 60, def = 0)
+    double time;
+    
+    @P(4) @Type.Number(def = -1)
+    double minValue;
+    
+    @P(5) @Type.Number(def = 1)
+    double maxValue;
+    
+    @Out(1) Output out;
+    boolean active;
+
+    @Override
+    public void update() \{
+        if (value.isAnimating()) \{
+            out.send(d(value));
+            active = true;
+        \} else if (active) \{
+            out.send(to);
+            active = false;
+        \}
+    \}
+    
+    void toChanged() \{
+        value.to(to).in(time);
+        active = true;
+    \}
+    
+    void valueChanged() \{
+        to = d(value);
+        active = false;
+        out.send(to);
+    \}
+    
+"
+    .value 0.4326019191252065
+    .time 10
   }
   ~ ./start-trigger-1!out ./player-1!play
-  ~ ./cells-4!out ./screen!in
   ~ ./timer-1!out ./circles!add-circle
-  ~ ./circles!out ./cells-4!in-4
+  ~ ./start-trigger-1!out ./capture-1!play
+  ~ ./cells-4!out ./screen!in
+  ~ ./timer-2!out ./animator-2!randomise
+  ~ ./animator-2!out ./cells-4!move-horisontal-split
+  ~ ./timer-4!out ./animator-3!randomise
+  ~ ./animator-3!out ./cells-4!move-vetical-split
+  ~ ./player-1!out ./cells-4!in-1
   ~ ./noise-1!out ./cells-4!in-2
   ~ ./capture-1!out ./cells-4!in-3
-  ~ ./player-1!out ./cells-4!in-1
-  ~ ./timer-2!out ./cells-4!move-center
-  ~ ./start-trigger-1!out ./capture-1!play
+  ~ ./circles!out ./cells-4!in-4
 }

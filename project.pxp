@@ -3,7 +3,9 @@ add-libs [file-list "config/libs/*.jar"]
 # <<<BUILD>>>
 include [file "video.pxr"]
 include [file "audio.pxr"]
+include [file "voronoi.pxr"]
 
 # <<<RUN>>>
 include [file "config/video_autostart"]
 include [file "config/audio_autostart"]
+include [file "config/voronoi_autostart"]
