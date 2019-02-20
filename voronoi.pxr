@@ -187,6 +187,10 @@
     #%graph.y 393
     .code "import org.kynosarges.tektosyne.geometry.*;
 
+    static final String ALL = \"All\";
+    static final String ONE_BY_ONE = \"One by one\";
+    static final String RANDOMLY = \"Random\";
+    
     @In(0) PImage in0;
     @In(1) PImage in1;
     @In(2) PImage in2;
@@ -194,7 +198,8 @@
     @In(4) PImage inEdges;
     
     @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out0, out1, out2, out3, outEdges;
-        
+    
+    @P(0) @Type.String(allowed = \{ALL, ONE_BY_ONE, RANDOMLY\}, def = RANDOMLY) String move;
     @P(1) @Type.Number(def = 80, min = 1, max = 200) double deltaMove;
     @P(2) @Type.Number(def = 1, min = 0, max = 15) double timeToMove;
     
@@ -210,14 +215,17 @@
     @P(15) @Type.Integer(def = 1, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell5InputNo;
     @P(16) @Type.Integer(def = 2, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell6InputNo;
 
-    @P(17) @Type.Boolean(def = false) boolean drawDots;
+    @P(17) @Type.Boolean(def = false) boolean drawCenters;
     
     @P(18) @Type.Boolean(def = true) boolean justColours;
-    
+
     List<Colour> colours = randomColours(7);
     
     // Cell properties
     List<Cell> cells = new ArrayList<>();
+    
+    // Last moved cell
+    int lastMoved = -1;
     
     // Calculated width of cell edges
     double edgeWidth;
@@ -247,7 +255,7 @@
     @Override
     public void draw() \{
         updateCellsGeometry();
-        cells.forEach(cell -> drawCell(cell));
+        cells.forEach(this::drawCell);
         drawCenters(outEdges);
         drawEdges(outEdges);
         drawOutput(inEdges, outEdges);
@@ -281,7 +289,7 @@
     \}
     
     void drawCenters(PGraphics out) \{
-        if(drawDots) \{
+        if(drawCenters) \{
             out.blendMode(BLEND);
             out.fill(255);
             out.noStroke();
@@ -339,20 +347,33 @@
     
     @T(1)
     public void moveCenters() \{
-        for(Cell cell: cells) \{
-            double nx, ny;
-            double deltaMove = this.deltaMove;
-            
-            // ensure new coordinate is inside viewport
-            do \{
-                double alpha = random(PI*2);
-                nx = cell.x() + cos(alpha) * deltaMove;
-                ny = cell.y() + sin(alpha) * deltaMove;
-                deltaMove *= 0.7; // slow down to avoid infinite loop
-            \} while (nx < 0 || nx > width || ny < 0 || ny > height);
-            
-            cell.startMovingTo(nx, ny, timeToMove);
+        if (move.equals(ALL)) \{
+            cells.forEach(this::moveCell);
+        \} else if (move.equals(ONE_BY_ONE)) \{
+            if(lastMoved < 0 || lastMoved >= cellsCount) \{
+                lastMoved = 0;
+            \}
+            moveCell(cells.get(lastMoved++));
+        \} else if (move.equals(RANDOMLY)) \{
+            cells.stream()
+                    .filter(c -> random(1) > 0.5)
+                    .forEach(this::moveCell);
         \}
+    \}
+    
+    void moveCell(Cell cell) \{
+        double nx, ny;
+        double deltaMove = this.deltaMove;
+
+        // ensure new coordinate is inside viewport
+        do \{
+            double alpha = random(PI*2);
+            nx = cell.x() + cos(alpha) * deltaMove;
+            ny = cell.y() + sin(alpha) * deltaMove;
+            deltaMove *= 0.7; // slow down to avoid infinite loop
+        \} while (nx < 0 || nx > width || ny < 0 || ny > height);
+
+        cell.startMovingTo(nx, ny, timeToMove);
     \}
     
     void updateCellsInput() \{
@@ -441,9 +462,9 @@
                 .limit(count).collect(Collectors.toList());
     \}
 "
-    .time-to-move 0.5357142857142857
+    .move All
+    .time-to-move 0.8035714285714285
     .edge-width-exp 3.7142857142857144
-    .just-colours false
   }
   @ ./capture-1 video:capture {
     #%graph.x 119
@@ -533,11 +554,11 @@
     #%graph.x 418
     #%graph.y 244
     .video [file "resources/horse.mp4"]
-    .position 0.7783756806277707
   }
   @ ./timer-1 core:timing:timer {
     #%graph.x 540
     #%graph.y 671
+    .period 9.64369642857143
   }
   @ ./color3 video:custom {
     #%graph.x 114
@@ -644,11 +665,10 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.44375
-    .y 0.015000000000000013
+    .x 0.99
+    .y 0.17500000000000004
     .mouse-input true
   }
-  ~ ./timer-1!out ./voronoi-composite!move-centers
   ~ ./color2!out ./voronoi-composite!in-2
   ~ ./color3!out ./voronoi-composite!in-3
   ~ ./gl-gradients!out ./voronoi-composite!in-edges
