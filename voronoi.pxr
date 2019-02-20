@@ -6,15 +6,15 @@
   .height 600
   .fps 60.0
   @ ./screen video:output {
-    #%graph.x 1100
-    #%graph.y 365
+    #%graph.x 1370
+    #%graph.y 343
     .rotation 0
     .always-on-top true
     .show-cursor true
   }
   @ ./vor video:gl:p2d {
-    #%graph.x 848
-    #%graph.y 59
+    #%graph.x 1370
+    #%graph.y 82
     .code "import org.kynosarges.tektosyne.geometry.*;
 
 
@@ -183,11 +183,13 @@
     .edge-width-exp 4.838709677419354
   }
   @ ./voronoi-composite video:custom {
-    #%graph.x 724
-    #%graph.y 393
+    #%graph.x 887
+    #%graph.y 82
     .code "import org.kynosarges.tektosyne.geometry.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
-
+    static final int MAX_CELLS_COUNT = 7;
+    static final double EDGE_THRESHOLD = 0.1;
     static final String ALL = \"All\";
     static final String ONE_BY_ONE = \"One by one\";
     static final String RANDOMLY = \"Random\";
@@ -201,12 +203,12 @@
     @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out0, out1, out2, out3, outEdges;
     
     @P(0) @Type.String(allowed = \{ALL, ONE_BY_ONE, RANDOMLY\}, def = RANDOMLY) String movements;
-    @P(1) @Type.Number(def = 80, min = 1, max = 200) double deltaMove;
-    @P(2) @Type.Number(def = 1, min = 0, max = 15) double timeToMove;
+    @P(1) @Type.Number(def = 80, min = 0, max = 1000, skew=2) double movementSpeed;
+    @P(2) @Type.Number(def = 1, min = 0, max = 15, skew=1.5) double timeToMove;
     
-    @P(3) @Type.Integer(def = 6, min = 2, max = 7) @OnChange(\"updateCellsCount\") int cellsCount;
+    @P(3) @Type.Integer(def = 6, min = 2, max = MAX_CELLS_COUNT) @OnChange(\"updateCellsCount\") int cellsCount;
     
-    @P(4) @Type.Number(def = 2, min = 0, max = 12) @OnChange(\"updateEdgeWidthAndClipRect\") double edgeWidthExp;
+    @P(4) @Type.Number(def = 3, min = 0, max = 1000, skew=4) @OnChange(\"updateClipRect\") double edgeWidth;
     
     @P(10) @Type.Integer(def = 0, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell0InputNo;
     @P(11) @Type.Integer(def = 1, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell1InputNo;
@@ -220,60 +222,127 @@
     
     @P(18) @Type.Boolean(def = true) boolean justColours;
 
-    List<Colour> colours = randomColours(7);
+    @Inject Ref<List<PVector>> coloursRef;
     
-    // Cell properties
     List<Cell> cells = new ArrayList<>();
     
-    // Last moved cell
+    // Last moved cell number
     int lastMoved = -1;
-    
-    // Calculated width of cell edges
-    double edgeWidth;
-    
-    // Limit for voronoi cells
-    RectD clip;
     
     // Current state of cells geometry
     VoronoiResults results;
     
     // Current coordinates of cells centers
-    PointD\[\] points;
+    @Inject Ref<List<PointD>> pointsRef;
     
-    // Target coordinates
+    // Target coordinates of cells
     @Inject Property m0x, m1x, m2x, m3x, m4x, m5x, m6x;
     @Inject Property m0y, m1y, m2y, m3y, m4y, m5y, m6y;
 
-    @Override
-    public void setup() \{
-        updateEdgeWidthAndClipRect();
+    
+    
+    // Initialisation
+
+    @Override public void setup() \{
+        initRefs();
+        updateCellsInputs();
         updateCellsCount();
 
         smooth();
         background(0);
     \}
+    
+    void initRefs() \{ 
+        coloursRef.init(ArrayList::new);
+        coloursRef.apply(list -> \{
+            while(list.size() < MAX_CELLS_COUNT) \{
+                list.add(new PVector(random(255), random(255), random(255)));
+            \}
+        \});
+        pointsRef.init(CopyOnWriteArrayList::new);
+    \}
+    
+    void updateCellsInputs() \{
+        int\[\] cellInputNos = new int\[\] \{ cell0InputNo, cell1InputNo, cell2InputNo, cell3InputNo, cell4InputNo, cell5InputNo, cell6InputNo \};
+        PGraphics\[\] outs = \{ null, out0, out1, out2, out3 \};
+        PImage\[\] ins = \{ null, in0, in1, in2, in3 \};
+        Property\[\]\[\] moves = \{ \{m0x, m0y\}, \{m1x, m1y\}, \{m2x, m2y\},
+            \{m3x, m3y\}, \{m4x, m4y\}, \{m5x, m5y\}, \{m6x, m6y\} \};
 
-    @Override
-    public void draw() \{
+        List<Cell> newCells = new ArrayList<>();
+        for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
+            int inputNo = cellInputNos\[i\];
+            newCells.add(new Cell(
+                    newCells.size(),
+                    Optional.ofNullable(ins\[inputNo + 1\]), 
+                    Optional.ofNullable(outs\[inputNo + 1\]), 
+                    coloursRef.get().get(i),
+                    moves\[i\]\[0\],
+                    moves\[i\]\[1\]));
+        \}
+        cells = newCells;
+    \}
+    
+    void updateCellsCount() \{
+        pointsRef.apply(points -> \{
+            int oldSize = points.size();
+            if (oldSize != cellsCount) \{
+                RectD clipRect = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
+                if (oldSize < cellsCount) \{
+                    PointD\[\] newPoints = GeoUtils.randomPoints(cellsCount - oldSize, clipRect, new PointDComparatorY(0), 10);
+                    points.addAll(Arrays.asList(newPoints));
+                \} else \{
+                    points.subList(cellsCount, oldSize).clear();
+                \}
+                results = Voronoi.findAll(points.toArray(new PointD\[0\]), clipRect);        
+
+                // set coordinates of new cells if added
+                for(int i = oldSize; i < points.size(); ++i) \{
+                    PointD point = points.get(i);
+                    cells.get(i).jumpTo(point.x, point.y);
+                \}
+            \}
+        \});
+    \}
+
+    
+    
+    // Drawing
+    
+    @Override public void draw() \{
         updateCellsGeometry();
-        cells.forEach(this::drawCell);
+        cells.subList(0, cellsCount).forEach(this::drawCell);
         drawCenters(outEdges);
         drawEdges(outEdges);
         drawOutput(inEdges, outEdges);
+    \}
+    
+    void updateCellsGeometry() \{
+        boolean moved = false;
+        for(int i=0; i<cellsCount; ++i) \{
+            PointD oldPoint = pointsRef.get().get(i);
+            PointD newPoint = new PointD(d(cells.get(i).moveX), d(cells.get(i).moveY));
+            pointsRef.get().set(i, newPoint);
+            moved |= oldPoint != newPoint;
+        \}
+        if(moved) \{
+            RectD clipRect = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
+            results = Voronoi.findAll(pointsRef.get().toArray(new PointD\[0\]), clipRect);        
+        \}
     \}
     
     void drawCell(Cell cell) \{
         cell.out.ifPresent(out -> \{
             out.blendMode(BLEND);
              // if no edges, expanding mask by one pixel to avoid artifacts
-            out.strokeWeight(edgeWidthExp > 0.1 ? 0 : 1);
+            out.strokeWeight(edgeWidth > EDGE_THRESHOLD ? 0 : 1);
 
             PointD\[\] region = results.voronoiRegions()\[cell.no\];
             double\[\] coords = PointD.toDoubles(region);
-            Colour c = cell.colour;
+            PVector c = cell.colour;
             if (justColours) \{
-                out.fill(c.r, c.g, c.b);
-                out.stroke(c.r, c.g, c.b);
+                out.fill(c.x, c.y, c.z);
+                out.stroke(c.x, c.y, c.z);
             \} else \{
                 out.fill(255);
                 out.stroke(255);
@@ -296,15 +365,14 @@
             out.noStroke();
             
             double dotSize = 20;
-            for (int i=0; i<points.length; ++i) \{
-                PointD point = points\[i\];
+            for (PointD point: pointsRef.get()) \{
                 out.rect(point.x-dotSize/2, point.y-dotSize/2, dotSize, dotSize);
             \}
         \}
     \}
     
     void drawEdges(PGraphics out) \{
-        if(edgeWidthExp > 0.1) \{
+        if(edgeWidth > EDGE_THRESHOLD) \{
             out.blendMode(BLEND);
             out.strokeWeight(edgeWidth*1.1);
             out.stroke(255);
@@ -328,26 +396,11 @@
         release(out);
     \}
     
-    void updateCellsGeometry() \{
-        boolean moved = false;
-        for(int i=0; i<cellsCount; ++i) \{
-            PointD oldPoint = points\[i\];
-            PointD newPoint = new PointD(d(cells.get(i).moveX), d(cells.get(i).moveY));
-            points\[i\] = newPoint;
-            moved |= oldPoint != newPoint;
-        \}
-        if(moved) \{
-            results = Voronoi.findAll(points, clip);
-        \}
-    \}
+
+
+    // Cell movement
     
-    void updateEdgeWidthAndClipRect() \{
-        edgeWidth = pow(2, edgeWidthExp);
-        clip = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
-    \}
-    
-    @T(1)
-    public void moveCenters() \{
+    @T(1) public void moveCells() \{
         if (movements.equals(ALL)) \{
             cells.forEach(this::moveCell);
         \} else if (movements.equals(ONE_BY_ONE)) \{
@@ -364,7 +417,7 @@
     
     void moveCell(Cell cell) \{
         double nx, ny;
-        double deltaMove = this.deltaMove;
+        double deltaMove = movementSpeed;
 
         // ensure new coordinate is inside viewport
         do \{
@@ -377,49 +430,19 @@
         cell.startMovingTo(nx, ny, timeToMove);
     \}
     
-    void updateCellsInput() \{
-        int\[\] cellInputNos = new int\[\] \{ cell0InputNo, cell1InputNo, cell2InputNo, cell3InputNo, cell4InputNo, cell5InputNo, cell6InputNo \};
-        PGraphics\[\] outs = \{ null, out0, out1, out2, out3 \};
-        PImage\[\] ins = \{ null, in0, in1, in2, in3 \};
-        Property\[\]\[\] moves = \{ \{m0x, m0y\}, \{m1x, m1y\}, \{m2x, m2y\},
-            \{m3x, m3y\}, \{m4x, m4y\}, \{m5x, m5y\}, \{m6x, m6y\} \};
-
-        List<Cell> cells = new ArrayList<>();
-        for(int i=0; i<cellsCount; ++i) \{
-            int inputNo = cellInputNos\[i\];
-            cells.add(new Cell(
-                    cells.size(),
-                    Optional.ofNullable(ins\[inputNo + 1\]), 
-                    Optional.ofNullable(outs\[inputNo + 1\]), 
-                    colours.get(i),
-                    moves\[i\]\[0\],
-                    moves\[i\]\[1\]));
-        \}
-        this.cells = cells;
-    \}
     
-    void updateCellsCount() \{
-        updateCellsInput();
-        
-        final RectD bounds = new RectD(0.1 * width, 0.1 * height, 0.9 * width, 0.9 * height);
-        points = GeoUtils.randomPoints(cellsCount, bounds, new PointDComparatorY(0), 10);
-        results = Voronoi.findAll(points, clip);        
-
-        // reset moves
-        for(int i=0; i<cellsCount; ++i) \{
-            cells.get(i).jumpTo(points\[i\].x, points\[i\].y);
-        \}
-    \}
     
+    // Cell container
+
     static class Cell \{
         final int no;
         final Optional<PImage> in;
         final Optional<PGraphics> out;
-        final Colour colour;
+        final PVector colour;
         final Property moveX;
         final Property moveY;
         
-        Cell(int no, Optional<PImage> in, Optional<PGraphics> out, Colour colour, 
+        Cell(int no, Optional<PImage> in, Optional<PGraphics> out, PVector colour, 
                 Property moveX, Property moveY) \{
             this.no = no;
             this.in = in;
@@ -447,34 +470,19 @@
             moveY.set(y);
         \}
     \}
-    
-    static class Colour \{
-        final double r, g, b;
-        
-        Colour(double r, double g, double b) \{ 
-            this.r=r; 
-            this.g=g; 
-            this.b=b; 
-        \}
-    \}
-    
-    List<Colour> randomColours(int count) \{ 
-        return Stream.generate(() -> new Colour(random(255), random(255), random(255)))
-                .limit(count).collect(Collectors.toList());
-    \}
 "
-    .time-to-move 0.6
-    .edge-width-exp 3.7142857142857144
-    .just-colours false
+    .cells-count 7
+    .edge-width 10
+    .draw-centers true
   }
   @ ./capture-1 video:capture {
-    #%graph.x 119
-    #%graph.y 701
+    #%graph.x 1160
+    #%graph.y 415
     .device 2
     .resize-mode Crop
-    .align-x 0.5887096774193549
-    .align-y 0.0
-    .zoom 1.8509600756236193
+    .align-x 0.3630952380952381
+    .align-y 0.10714285714285714
+    .zoom 3.1423852237654315
   }
   @ ./color video:custom {
     #%graph.x 124
@@ -522,9 +530,9 @@
     \}
     
 "
-    .red 121.33064516129033
-    .green 217.98387096774195
-    .blue 164.51612903225805
+    .red 44.01785714285714
+    .green 203.39285714285717
+    .blue 177.5892857142857
   }
   @ ./color2 video:custom {
     #%graph.x 119
@@ -552,13 +560,15 @@
     .blue 176.85483870967744
   }
   @ ./player-1 video:player {
-    #%graph.x 268
-    #%graph.y 150
+    #%graph.x 302
+    #%graph.y 130
     .video [file "resources/horse.mp4"]
+    .rate 2
+    .resize-mode Scale
   }
   @ ./timer-1 core:timing:timer {
-    #%graph.x 540
-    #%graph.y 671
+    #%graph.x 712
+    #%graph.y 415
   }
   @ ./color3 video:custom {
     #%graph.x 114
@@ -581,9 +591,9 @@
     \}
     
 "
-    .red 255.0
-    .green 255.0
-    .blue 67.86290322580645
+    .red 0.0
+    .green 0.0
+    .blue 0.0
   }
   @ ./gl-gradients video:gl:p2d {
     #%graph.x 333
@@ -665,14 +675,15 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.0
+    .x 0.015
     .y 1.0
     .mouse-input true
   }
   @ ./solarize video:gl:p2d {
-    #%graph.x 432
-    #%graph.y 98
+    #%graph.x 566
+    #%graph.y 93
     #%graph.comment Solarizes an image\nby VIDVOX\nCategories : Glitch
+    #%graph.minimized true
     .code "
 
     @In(1)
@@ -809,6 +820,9 @@ void main()
 	
 	//	convert back to rgb
 	outColor.rgb = hsv2rgb(outColor.rgb);
+
+//        outColor.r = outColor.r*2;
+//        outColor.b = outColor.b*1.4;
 	
 	gl_FragColor = outColor;
 \}
@@ -817,12 +831,17 @@ void main()
 
 
 "
+    .center-brightness 0.31547619047619047
+    .power-curve 1.3333333333333333
+    .inverse true
   }
   ~ ./color2!out ./voronoi-composite!in-2
-  ~ ./color3!out ./voronoi-composite!in-3
   ~ ./gl-gradients!out ./voronoi-composite!in-edges
   ~ ./color!out ./voronoi-composite!in-1
-  ~ ./timer-1!out ./voronoi-composite!move-centers
-  ~ ./player-1!out ./voronoi-composite!in-0
+  ~ ./player-1!out ./solarize!in
+  ~ ./solarize!out ./voronoi-composite!in-0
   ~ ./voronoi-composite!out ./screen!in
+  ~ ./color!out ./voronoi-composite!in-0
+  ~ ./player-1!out ./voronoi-composite!in-3
+  ~ ./capture-1!out ./screen!in
 }
