@@ -187,21 +187,20 @@
     #%graph.y 393
     .code "import org.kynosarges.tektosyne.geometry.*;
 
+
     @In(0) PImage in0;
     @In(1) PImage in1;
     @In(2) PImage in2;
     @In(3) PImage in3;
     @In(4) PImage inEdges;
     
-    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out0; 
-    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out1;
-    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out2;
-    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out3;
-    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics outEdges;
+    @OffScreen(format = OffScreen.Format.ARGB, persistent = false) PGraphics out0, out1, out2, out3, outEdges;
         
     @P(1) @Type.Number(def = 80, min = 1, max = 200) double deltaMove;
     @P(2) @Type.Number(def = 1, min = 0, max = 15) double timeToMove;
-    @P(3) @Type.Integer(def = 6, min = 2, max = 7) @OnChange(\"initPoints\") int cellsCount;
+    
+    final int MAX_CELLS_COUNT = 7;
+    @P(3) @Type.Integer(def = 6, min = 2, max = MAX_CELLS_COUNT) @OnChange(\"initPoints\") int cellsCount;
     
     @P(4) @Type.Number(def = 2, min = 0, max = 12) @OnChange(\"updateEdgeWidth\") double edgeWidthExp;
     
@@ -217,15 +216,16 @@
     
     @P(18) @Type.Boolean(def = true) boolean justColours;
     
-    Map<Integer, PGraphics> outByCell = new HashMap<>();
-    Map<Integer, PImage> inByCell = new HashMap<>();
+    List<Cell> cells = new ArrayList<>();
     
     double edgeWidth;
 
-    Color\[\] colors;
+    @Inject Ref<List<Colour>> colours;
     PointD\[\] points;
     
     Property\[\]\[\] moves;
+    PImage\[\] ins;
+    PGraphics\[\] outs;
     
     RectD clip;
     VoronoiResults results;
@@ -233,45 +233,116 @@
     @Inject Property m0x, m1x, m2x, m3x, m4x, m5x, m6x;
     @Inject Property m0y, m1y, m2y, m3y, m4y, m5y, m6y;
     
-    @Inject PArray movesX;
-    @Inject PArray movesY;
+    @Override
+    public void init() \{
+        final RectD bounds = new RectD(0.1 * width, 0.1 * height, 0.9 * width, 0.9 * height);
+        points = GeoUtils.randomPoints(cellsCount, bounds, new PointDComparatorY(0), 10);
+        Property\[\]\[\] moves = \{ \{m0x, m0y\}, \{m1x, m1y\}, \{m2x, m2y\},
+            \{m3x, m3y\}, \{m4x, m4y\}, \{m5x, m5y\}, \{m6x, m6y\} \};
+        this.moves = moves;
+        for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
+            moves\[i\]\[0\].set(points\[i\].x);
+            moves\[i\]\[1\].set(points\[i\].y);
+        \}
+        PGraphics\[\] outs = \{out0, out1, out2, out3\};
+        this.outs = outs;
+        
+        PImage\[\] ins = \{in0, in1, in2, in3\};
+        this.ins = ins;
+    \}
     
     @Override
     public void setup() \{
         smooth();
         background(0);
-        initPoints();
+        colours.init(ArrayList::new);
+        colours.apply(l -> \{
+            if(l.isEmpty()) \{
+                for(int i=0; i<6; ++i) \{
+                    l.add(randomColour());
+                \}
+            \}
+        \});
         updateInputsOutputs();
         updateEdgeWidth();
     \}
+
+    @Override
+    public void draw() \{
+        updateCellsGeometry();
+        cells.forEach(cell -> \{
+            drawCell(cell.out, cell.no);
+            drawInput(cell.in, cell.out);
+        \});
+        drawCenters(outEdges);
+        drawEdges(outEdges);
+        drawInput(inEdges, outEdges);
+    \}
     
-    void initPoints() \{
-        final RectD bounds = new RectD(0.1 * width, 0.1 * height, 0.9 * width, 0.9 * height);
-        points = GeoUtils.randomPoints(cellsCount, bounds, new PointDComparatorY(0), 10);
+    void drawCell(PGraphics out, int cellNo) \{
+        out.blendMode(BLEND);
+         // if no edges, expanding mask by one pixel to avoid artifacts
+        out.strokeWeight(edgeWidthExp > 0.1 ? 0 : 1);
 
-        moves = new Property\[cellsCount\]\[\];
-        moves\[0\] = new Property\[\] \{m0x, m0y\};
-        moves\[1\] = new Property\[\] \{m1x, m1y\};
-        if(cellsCount > 2) moves\[2\] = new Property\[\] \{m2x, m2y\};
-        if(cellsCount > 3) moves\[3\] = new Property\[\] \{m3x, m3y\};
-        if(cellsCount > 4) moves\[4\] = new Property\[\] \{m4x, m4y\};
-        if(cellsCount > 5) moves\[5\] = new Property\[\] \{m5x, m5y\};
-        if(cellsCount > 6) moves\[6\] = new Property\[\] \{m6x, m6y\};
-
-        colors = new Color\[cellsCount\];
-        for(int i=0; i<cellsCount; ++i) \{
-            colors\[i\] = randomColor();
-            moves\[i\]\[0\].set(points\[i\].x);
-            moves\[i\]\[1\].set(points\[i\].y);
+        PointD\[\] region = results.voronoiRegions()\[cellNo\];
+        double\[\] coords = PointD.toDoubles(region);
+        Colour c = colours.get().get(cellNo);
+        if (justColours) \{
+            out.fill(c.r, c.g, c.b);
+            out.stroke(c.r, c.g, c.b);
+        \} else \{
+            out.fill(255);
+            out.stroke(255);
         \}
-        
-        clip = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
-        results = Voronoi.findAll(points, clip);
+
+        out.beginShape();
+        for(int i=0; i<coords.length/2; i+=1) \{
+            out.vertex(coords\[i*2\], coords\[i*2+1\]);
+        \}
+        out.endShape(CLOSE);
+    \}
+    
+    void drawCenters(PGraphics out) \{
+        if(drawDots) \{
+            out.blendMode(BLEND);
+            out.fill(255);
+            out.noStroke();
+            
+            double dotSize = 20;
+            for (int i=0; i<points.length; ++i) \{
+                PointD point = points\[i\];
+                out.rect(point.x-dotSize/2, point.y-dotSize/2, dotSize, dotSize);
+            \}
+        \}
+    \}
+    
+    void drawEdges(PGraphics out) \{
+        if(edgeWidthExp > 0.1) \{
+            out.blendMode(BLEND);
+            out.strokeWeight(edgeWidth*1.1);
+            out.stroke(255);
+            
+            for (VoronoiEdge edge: results.voronoiEdges) \{
+                final PointD start = results.voronoiVertices\[edge.vertex1\];
+                final PointD end = results.voronoiVertices\[edge.vertex2\];
+
+                out.line(start.x, start.y, end.x, end.y);
+            \}
+        \}
+    \}
+    
+    void drawInput(PImage in, PGraphics out) \{
+        if (!justColours) \{
+            out.blendMode(MULTIPLY);
+            out.image(in, 0, 0);
+        \}
+        blendMode(ADD);
+        copy(out);
+        release(out);
     \}
     
     @T(1)
-    public void move() \{
-        
+    public void moveCenters() \{
         for(int i=0; i<cellsCount; ++i) \{
             Property\[\] move = moves\[i\];
 
@@ -286,16 +357,15 @@
                 double dy = sin(alpha) * deltaMove;
                 nx = d(move\[0\]) + dx;
                 ny = d(move\[1\]) + dy;
-                deltaMove *= 0.7;
+                deltaMove *= 0.7; // slow down in case we are too far
             \}
             
             move\[0\].to(nx).in(timeToMove).easing(Easing.cubicOut);
             move\[1\].to(ny).in(timeToMove).easing(Easing.cubicOut);
         \}
     \}
-
-    @Override
-    public void draw() \{
+    
+    void updateCellsGeometry() \{
         boolean moved = false;
         for(int i=0; i<cellsCount; ++i) \{
             PointD oldPoint = points\[i\];
@@ -303,138 +373,69 @@
             points\[i\] = newPoint;
             moved |= oldPoint != newPoint;
         \}
-        if(moved) results = Voronoi.findAll(points, clip);
-        
-        outByCell.entrySet().stream().filter(e -> e.getKey() >= 0 && e.getKey() < cellsCount).forEach(e -> \{
-            int cellNo = e.getKey();
-            PGraphics out = e.getValue();
-            PImage in = inByCell.get(cellNo);
-            out.blendMode(BLEND);
-            out.strokeWeight(edgeWidthExp > 0.1 ? 0 : 1);
-
-            PointD\[\] region = results.voronoiRegions()\[cellNo\];
-            double\[\] coords = PointD.toDoubles(region);
-            Color c = colors\[cellNo\];
-            if (justColours) \{
-                out.fill(c.r, c.g, c.b);
-                out.stroke(c.r, c.g, c.b);
-            \} else \{
-                out.fill(255);
-                out.stroke(255);
-            \}
-
-            out.beginShape();
-            for(int i=0; i<coords.length/2; i+=1) \{
-                out.vertex(coords\[i*2\], coords\[i*2+1\]);
-            \}
-            out.endShape(CLOSE);
-
-            if (!justColours) \{
-                out.blendMode(MULTIPLY);
-                out.image(in, 0, 0);
-            \}
-            blendMode(ADD);
-            copy(out);
-            release(out);
-        \});
-        
-        PGraphics out = outEdges;
-        out.fill(255);
-        out.blendMode(BLEND);
-        out.noStroke();
-        
-        // draw generator points
-        if(drawDots) \{
-            double dotSize = 20;
-            for (int i=0; i<points.length; ++i) \{
-                PointD point = points\[i\];
-                out.rect(point.x-dotSize/2, point.y-dotSize/2, dotSize, dotSize);
-            \}
+        if(moved) \{
+            results = Voronoi.findAll(points, clip);
         \}
-        
-        // draw edges of Voronoi diagram
-        if(edgeWidthExp > 0.1) \{
-            out.strokeWeight(edgeWidth*1.1);
-            out.stroke(255);
-            for (VoronoiEdge edge: results.voronoiEdges) \{
-                final PointD start = results.voronoiVertices\[edge.vertex1\];
-                final PointD end = results.voronoiVertices\[edge.vertex2\];
-
-                out.line(start.x, start.y, end.x, end.y);
-            \}
-        \}
-
-        if (!justColours) \{
-            out.blendMode(MULTIPLY);
-            out.image(inEdges, 0, 0);
-        \}
-        blendMode(ADD);
-        copy(out);
-        release(out);
     \}
     
     void updateEdgeWidth() \{
         edgeWidth = pow(2, edgeWidthExp);
+        clip = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
     \}
     
     void updateInputsOutputs() \{
-        Map<Integer, PGraphics> outByCell = new HashMap<>();
-        if(cell0InputNo >= 0) outByCell.put(0, getOutByNo(cell0InputNo));
-        if(cell1InputNo >= 0) outByCell.put(1, getOutByNo(cell1InputNo));
-        if(cell2InputNo >= 0) outByCell.put(2, getOutByNo(cell2InputNo));
-        if(cell3InputNo >= 0) outByCell.put(3, getOutByNo(cell3InputNo));
-        if(cell4InputNo >= 0) outByCell.put(4, getOutByNo(cell4InputNo));
-        if(cell5InputNo >= 0) outByCell.put(5, getOutByNo(cell5InputNo));
-        if(cell6InputNo >= 0) outByCell.put(6, getOutByNo(cell6InputNo));
-        
-        Map<Integer, PImage> inByCell = new HashMap<>();
-        if(cell0InputNo >= 0) inByCell.put(0, getInByNo(cell0InputNo));
-        if(cell1InputNo >= 0) inByCell.put(1, getInByNo(cell1InputNo));
-        if(cell2InputNo >= 0) inByCell.put(2, getInByNo(cell2InputNo));
-        if(cell3InputNo >= 0) inByCell.put(3, getInByNo(cell3InputNo));
-        if(cell4InputNo >= 0) inByCell.put(4, getInByNo(cell4InputNo));
-        if(cell5InputNo >= 0) inByCell.put(5, getInByNo(cell5InputNo));
-        if(cell6InputNo >= 0) inByCell.put(6, getInByNo(cell6InputNo));
-        
-        this.outByCell = outByCell;
-        this.inByCell = inByCell;
+        List<Cell> cells = new ArrayList<>();
+        int\[\] cellInputNos = new int\[\] \{ cell0InputNo, cell1InputNo, cell2InputNo, cell3InputNo, cell4InputNo, cell5InputNo \};
+        for(int i=0; i<cellInputNos.length; ++i) \{
+            int inputNo = cellInputNos\[i\];
+            if(inputNo >= 0) \{
+                cells.add(new Cell(getInByNo(inputNo), getOutByNo(inputNo), cells.size()));
+            \}
+        \}
+        this.cells = cells;
     \}
     
     PGraphics getOutByNo(int no) \{
-        switch(no) \{
-            case 0: return out0;
-            case 1: return out1;
-            case 2: return out2;
-            case 3: return out3;
-            default: throw new RuntimeException(\"Invalid output number\");
-        \}
+        return outs\[no\];
     \}
     
     PImage getInByNo(int no) \{
-        switch(no) \{
-            case 0: return in0;
-            case 1: return in1;
-            case 2: return in2;
-            case 3: return in3;
-            default: throw new RuntimeException(\"Invalid input number\");
+        return ins\[no\];
+    \}
+    
+    static class InOut \{
+        final PImage in;
+        final PGraphics out;
+        
+        InOut(PImage in, PGraphics out) \{
+            this.in = in;
+            this.out = out;
         \}
     \}
     
-    static class Color \{
-        double r, g, b;
-        Color(double r, double g, double b) \{ this.r=r; this.g=g; this.b=b; \}
+    static class Cell extends InOut \{
+        final int no;
+        
+        Cell(PImage in, PGraphics out, int no) \{
+            super(in, out);
+            this.no = no;
+        \}
     \}
-    Color randomColor() \{ return new Color(random(256), random(256), random(256)); \}
- 
+    
+    static class Colour \{
+        final double r, g, b;
+        
+        Colour(double r, double g, double b) \{ 
+            this.r=r; 
+            this.g=g; 
+            this.b=b; 
+        \}
+    \}
+    
+    Colour randomColour() \{ 
+        return new Colour(random(255), random(255), random(255));
+    \}
 "
-    .delta-move 80.83832335329342
-    .time-to-move 0.8982035928143712
-    .cells-count 7
-    .edge-width-exp 3.592814371257485
-    .cell-4-input-no 1
-    .cell-5-input-no 2
-    .cell-6-input-no 0
-    .draw-dots true
   }
   @ ./capture-1 video:capture {
     #%graph.x 119
@@ -524,7 +525,7 @@
     #%graph.x 361
     #%graph.y 518
     .video [file "resources/horse.mp4"]
-    .position 0.11649273812889045
+    .position 0.12167149209427434
   }
   @ ./timer-1 core:timing:timer {
     #%graph.x 540
@@ -555,11 +556,89 @@
     .green 255.0
     .blue 67.86290322580645
   }
-  ~ ./color!out ./voronoi-composite!in-0
+  @ ./gl-gradients video:gl:p2d {
+    #%graph.x 1044
+    #%graph.y 719
+    .code "
+
+    @P(1)
+    @Type.Number(min = 0, max = 1, def = 0.5)
+    double x;
+    @P(2)
+    @Type.Number(min = 0, max = 1, def = 0.5)
+    double y;
+    @P(3)
+    @Config.Port(false)
+    boolean mouseInput;
+
+    void updateUniforms() \{
+        shader.set(\"time\", millis() / 1000.0);
+        if (mouseInput) \{
+            x = (double) mouseX / width;
+            y = 1.0 - ((double) mouseY / height);
+        \}
+        shader.set(\"mouse\", x, y);
+    \}
+
+    // BOILERPLATE BELOW
+    @P(0)
+    @Type.String(mime = GLSL_FRAGMENT_MIME, template = DEF_FRAG)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+
+    final String DEF_FRAG
+            = \"uniform float time;\\n\"
+            + \"uniform vec2 mouse;\\n\"
+            + \"uniform vec2 resolution;\\n\"
+            + \"\\n\"
+            + \"void main() \{\\n\"
+            + \"    // fragment position\\n\"
+            + \"    vec2 pos = gl_FragCoord.xy/resolution.xy;\\n\"
+            + \"    vec2 dist = mouse - pos;\\n\"
+            + \"    vec3 white = vec3(1.0 - length(dist));\\n\"
+            + \"    gl_FragColor = vec4(white, 1.0);\\n\"
+            + \"\}\";
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER,
+                    fragment.isEmpty() ? DEF_FRAG : fragment);
+        \}
+        shader(shader);
+        updateUniforms();
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+"
+    .fragment "uniform float time;
+uniform vec2 mouse;
+uniform vec2 resolution;
+
+void main() \{
+    vec2 pos = ( gl_FragCoord.xy / resolution.xy ) * 8.0 - 13.0;
+    float x = sin(time*4 + length(pos.xy));
+    float y = cos(time*18 + length(pos.xy));
+    float white = x * y * 3.5;
+    gl_FragColor = vec4(white, white, white, 1.0 );
+\}"
+    .x 0.0
+    .y 1.0
+    .mouse-input true
+  }
   ~ ./voronoi-composite!out ./screen!in
-  ~ ./color2!out ./voronoi-composite!in-3
-  ~ ./player-1!out ./voronoi-composite!in-1
-  ~ ./capture-1!out ./voronoi-composite!in-2
-  ~ ./player-1!out ./voronoi-composite!in-edges
-  ~ ./timer-1!out ./voronoi-composite!move
 }

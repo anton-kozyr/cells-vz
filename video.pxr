@@ -15,7 +15,7 @@
     #%graph.x 614
     #%graph.y 31
     .video [file "resources/horse.mp4"]
-    .position 0.6145061775160824
+    .position 0.9765759190349868
   }
   @ ./custom-1 video:custom {
     #%graph.x 537
@@ -132,11 +132,12 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     
     private void maskedImage(PImage in, PGraphics out, double x, double y, double w, double h) \{
         out.noStroke();
-        out.blendMode(BlendMode.Blend);
+        out.blendMode(BLEND);
         out.fill(255);
         out.rect(x, y, w, h);
-        out.blendMode(BlendMode.Mask);
+        out.blendMode(MULTIPLY);
         out.image(in, 0, 0);
+        blendMode(ADD);
         copy(out);
         release(out);
     \}
@@ -189,8 +190,8 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     \}    
     */    
 "
-    .xc 572.9839348361155
-    .yc 269.45710572137995
+    .xc 385.455030550787
+    .yc 306.00732335253105
     .h 300.0
   }
   @ ./capture-1 video:capture {
@@ -322,7 +323,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     \}
     
 "
-    .value -0.1019042501211084
+    .value 0.02144369727888837
     .time 10
   }
   @ ./timer-4 core:timing:timer {
@@ -382,7 +383,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     \}
     
 "
-    .value 0.4326019191252065
+    .value -0.03456239425158486
     .time 10
   }
   ~ ./start-trigger-1!out ./player-1!play
