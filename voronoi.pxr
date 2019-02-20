@@ -187,7 +187,6 @@
     #%graph.y 393
     .code "import org.kynosarges.tektosyne.geometry.*;
 
-
     @In(0) PImage in0;
     @In(1) PImage in1;
     @In(2) PImage in2;
@@ -199,107 +198,86 @@
     @P(1) @Type.Number(def = 80, min = 1, max = 200) double deltaMove;
     @P(2) @Type.Number(def = 1, min = 0, max = 15) double timeToMove;
     
-    final int MAX_CELLS_COUNT = 7;
-    @P(3) @Type.Integer(def = 6, min = 2, max = MAX_CELLS_COUNT) @OnChange(\"initPoints\") int cellsCount;
+    @P(3) @Type.Integer(def = 6, min = 2, max = 7) @OnChange(\"updateCellsCount\") int cellsCount;
     
-    @P(4) @Type.Number(def = 2, min = 0, max = 12) @OnChange(\"updateEdgeWidth\") double edgeWidthExp;
+    @P(4) @Type.Number(def = 2, min = 0, max = 12) @OnChange(\"updateEdgeWidthAndClipRect\") double edgeWidthExp;
     
-    @P(10) @Type.Integer(def = 0, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell0InputNo;
-    @P(11) @Type.Integer(def = 1, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell1InputNo;
-    @P(12) @Type.Integer(def = 2, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell2InputNo;
-    @P(13) @Type.Integer(def = 3, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell3InputNo;
-    @P(14) @Type.Integer(def = 0, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell4InputNo;
-    @P(15) @Type.Integer(def = 1, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell5InputNo;
-    @P(16) @Type.Integer(def = 2, min = -1, max = 3) @OnChange(\"updateInputsOutputs\") int cell6InputNo;
+    @P(10) @Type.Integer(def = 0, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell0InputNo;
+    @P(11) @Type.Integer(def = 1, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell1InputNo;
+    @P(12) @Type.Integer(def = 2, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell2InputNo;
+    @P(13) @Type.Integer(def = 3, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell3InputNo;
+    @P(14) @Type.Integer(def = 0, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell4InputNo;
+    @P(15) @Type.Integer(def = 1, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell5InputNo;
+    @P(16) @Type.Integer(def = 2, min = -1, max = 3) @OnChange(\"updateCellsInput\") int cell6InputNo;
 
     @P(17) @Type.Boolean(def = false) boolean drawDots;
     
     @P(18) @Type.Boolean(def = true) boolean justColours;
     
+    List<Colour> colours = randomColours(7);
+    
+    // Cell properties
     List<Cell> cells = new ArrayList<>();
     
+    // Calculated width of cell edges
     double edgeWidth;
-
-    @Inject Ref<List<Colour>> colours;
-    PointD\[\] points;
     
-    Property\[\]\[\] moves;
-    PImage\[\] ins;
-    PGraphics\[\] outs;
-    
+    // Limit for voronoi cells
     RectD clip;
+    
+    // Current state of cells geometry
     VoronoiResults results;
     
+    // Current coordinates of cells centers
+    PointD\[\] points;
+    
+    // Moves
     @Inject Property m0x, m1x, m2x, m3x, m4x, m5x, m6x;
     @Inject Property m0y, m1y, m2y, m3y, m4y, m5y, m6y;
-    
-    @Override
-    public void init() \{
-        final RectD bounds = new RectD(0.1 * width, 0.1 * height, 0.9 * width, 0.9 * height);
-        points = GeoUtils.randomPoints(cellsCount, bounds, new PointDComparatorY(0), 10);
-        Property\[\]\[\] moves = \{ \{m0x, m0y\}, \{m1x, m1y\}, \{m2x, m2y\},
-            \{m3x, m3y\}, \{m4x, m4y\}, \{m5x, m5y\}, \{m6x, m6y\} \};
-        this.moves = moves;
-        for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
-            moves\[i\]\[0\].set(points\[i\].x);
-            moves\[i\]\[1\].set(points\[i\].y);
-        \}
-        PGraphics\[\] outs = \{out0, out1, out2, out3\};
-        this.outs = outs;
-        
-        PImage\[\] ins = \{in0, in1, in2, in3\};
-        this.ins = ins;
-    \}
-    
+
     @Override
     public void setup() \{
+        updateEdgeWidthAndClipRect();
+        updateCellsCount();
+
         smooth();
         background(0);
-        colours.init(ArrayList::new);
-        colours.apply(l -> \{
-            if(l.isEmpty()) \{
-                for(int i=0; i<6; ++i) \{
-                    l.add(randomColour());
-                \}
-            \}
-        \});
-        updateInputsOutputs();
-        updateEdgeWidth();
     \}
 
     @Override
     public void draw() \{
         updateCellsGeometry();
-        cells.forEach(cell -> \{
-            drawCell(cell.out, cell.no);
-            drawInput(cell.in, cell.out);
-        \});
+        cells.forEach(cell -> drawCell(cell));
         drawCenters(outEdges);
         drawEdges(outEdges);
-        drawInput(inEdges, outEdges);
+        drawOutput(inEdges, outEdges);
     \}
     
-    void drawCell(PGraphics out, int cellNo) \{
-        out.blendMode(BLEND);
-         // if no edges, expanding mask by one pixel to avoid artifacts
-        out.strokeWeight(edgeWidthExp > 0.1 ? 0 : 1);
+    void drawCell(Cell cell) \{
+        cell.out.ifPresent(out -> \{
+            out.blendMode(BLEND);
+             // if no edges, expanding mask by one pixel to avoid artifacts
+            out.strokeWeight(edgeWidthExp > 0.1 ? 0 : 1);
 
-        PointD\[\] region = results.voronoiRegions()\[cellNo\];
-        double\[\] coords = PointD.toDoubles(region);
-        Colour c = colours.get().get(cellNo);
-        if (justColours) \{
-            out.fill(c.r, c.g, c.b);
-            out.stroke(c.r, c.g, c.b);
-        \} else \{
-            out.fill(255);
-            out.stroke(255);
-        \}
+            PointD\[\] region = results.voronoiRegions()\[cell.no\];
+            double\[\] coords = PointD.toDoubles(region);
+            Colour c = cell.colour;
+            if (justColours) \{
+                out.fill(c.r, c.g, c.b);
+                out.stroke(c.r, c.g, c.b);
+            \} else \{
+                out.fill(255);
+                out.stroke(255);
+            \}
 
-        out.beginShape();
-        for(int i=0; i<coords.length/2; i+=1) \{
-            out.vertex(coords\[i*2\], coords\[i*2+1\]);
-        \}
-        out.endShape(CLOSE);
+            out.beginShape();
+            for(int i=0; i<coords.length/2; i+=1) \{
+                out.vertex(coords\[i*2\], coords\[i*2+1\]);
+            \}
+            out.endShape(CLOSE);
+            
+            cell.in.ifPresent(in -> drawOutput(in, out));
+        \});
     \}
     
     void drawCenters(PGraphics out) \{
@@ -331,7 +309,7 @@
         \}
     \}
     
-    void drawInput(PImage in, PGraphics out) \{
+    void drawOutput(PImage in, PGraphics out) \{
         if (!justColours) \{
             out.blendMode(MULTIPLY);
             out.image(in, 0, 0);
@@ -341,35 +319,11 @@
         release(out);
     \}
     
-    @T(1)
-    public void moveCenters() \{
-        for(int i=0; i<cellsCount; ++i) \{
-            Property\[\] move = moves\[i\];
-
-            double nx = -1;
-            double ny = -1;
-            double deltaMove = this.deltaMove;
-            
-            // ensure new coordinate is inside viewport
-            while (nx < 0 || nx > width || ny < 0 || ny > height) \{
-                double alpha = random(PI*2);
-                double dx = cos(alpha) * deltaMove;
-                double dy = sin(alpha) * deltaMove;
-                nx = d(move\[0\]) + dx;
-                ny = d(move\[1\]) + dy;
-                deltaMove *= 0.7; // slow down in case we are too far
-            \}
-            
-            move\[0\].to(nx).in(timeToMove).easing(Easing.cubicOut);
-            move\[1\].to(ny).in(timeToMove).easing(Easing.cubicOut);
-        \}
-    \}
-    
     void updateCellsGeometry() \{
         boolean moved = false;
         for(int i=0; i<cellsCount; ++i) \{
             PointD oldPoint = points\[i\];
-            PointD newPoint = new PointD(d(moves\[i\]\[0\]), d(moves\[i\]\[1\]));
+            PointD newPoint = new PointD(d(cells.get(i).moveX), d(cells.get(i).moveY));
             points\[i\] = newPoint;
             moved |= oldPoint != newPoint;
         \}
@@ -378,47 +332,97 @@
         \}
     \}
     
-    void updateEdgeWidth() \{
+    void updateEdgeWidthAndClipRect() \{
         edgeWidth = pow(2, edgeWidthExp);
         clip = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
     \}
     
-    void updateInputsOutputs() \{
+    @T(1)
+    public void moveCenters() \{
+        for(Cell cell: cells) \{
+            double nx, ny;
+            double deltaMove = this.deltaMove;
+            
+            // ensure new coordinate is inside viewport
+            do \{
+                double alpha = random(PI*2);
+                nx = cell.x() + cos(alpha) * deltaMove;
+                ny = cell.y() + sin(alpha) * deltaMove;
+                deltaMove *= 0.7; // slow down to avoid infinite loop
+            \} while (nx < 0 || nx > width || ny < 0 || ny > height);
+            
+            cell.startMovingTo(nx, ny, timeToMove);
+        \}
+    \}
+    
+    void updateCellsInput() \{
+        int\[\] cellInputNos = new int\[\] \{ cell0InputNo, cell1InputNo, cell2InputNo, cell3InputNo, cell4InputNo, cell5InputNo, cell6InputNo \};
+        PGraphics\[\] outs = \{ null, out0, out1, out2, out3 \};
+        PImage\[\] ins = \{ null, in0, in1, in2, in3 \};
+        Property\[\]\[\] moves = \{ \{m0x, m0y\}, \{m1x, m1y\}, \{m2x, m2y\},
+            \{m3x, m3y\}, \{m4x, m4y\}, \{m5x, m5y\}, \{m6x, m6y\} \};
+
         List<Cell> cells = new ArrayList<>();
-        int\[\] cellInputNos = new int\[\] \{ cell0InputNo, cell1InputNo, cell2InputNo, cell3InputNo, cell4InputNo, cell5InputNo \};
-        for(int i=0; i<cellInputNos.length; ++i) \{
+        for(int i=0; i<cellsCount; ++i) \{
             int inputNo = cellInputNos\[i\];
-            if(inputNo >= 0) \{
-                cells.add(new Cell(getInByNo(inputNo), getOutByNo(inputNo), cells.size()));
-            \}
+            cells.add(new Cell(
+                    cells.size(),
+                    Optional.ofNullable(ins\[inputNo + 1\]), 
+                    Optional.ofNullable(outs\[inputNo + 1\]), 
+                    colours.get(i),
+                    moves\[i\]\[0\],
+                    moves\[i\]\[1\]));
         \}
         this.cells = cells;
     \}
     
-    PGraphics getOutByNo(int no) \{
-        return outs\[no\];
-    \}
-    
-    PImage getInByNo(int no) \{
-        return ins\[no\];
-    \}
-    
-    static class InOut \{
-        final PImage in;
-        final PGraphics out;
+    void updateCellsCount() \{
+        updateCellsInput();
         
-        InOut(PImage in, PGraphics out) \{
-            this.in = in;
-            this.out = out;
+        final RectD bounds = new RectD(0.1 * width, 0.1 * height, 0.9 * width, 0.9 * height);
+        points = GeoUtils.randomPoints(cellsCount, bounds, new PointDComparatorY(0), 10);
+        results = Voronoi.findAll(points, clip);        
+
+        // reset moves
+        for(int i=0; i<cellsCount; ++i) \{
+            cells.get(i).jumpTo(points\[i\].x, points\[i\].y);
         \}
     \}
     
-    static class Cell extends InOut \{
+    static class Cell \{
         final int no;
+        final Optional<PImage> in;
+        final Optional<PGraphics> out;
+        final Colour colour;
+        final Property moveX;
+        final Property moveY;
         
-        Cell(PImage in, PGraphics out, int no) \{
-            super(in, out);
+        Cell(int no, Optional<PImage> in, Optional<PGraphics> out, Colour colour, 
+                Property moveX, Property moveY) \{
             this.no = no;
+            this.in = in;
+            this.out = out;
+            this.colour = colour;
+            this.moveX = moveX;
+            this.moveY = moveY;
+        \}
+        
+        double x() \{
+            return moveX.getDouble();
+        \}
+        
+        double y() \{
+            return moveY.getDouble();
+        \}
+        
+        void startMovingTo(double x, double y, double timeToMove) \{
+            moveX.to(x).in(timeToMove).easing(Easing.cubicOut);
+            moveY.to(y).in(timeToMove).easing(Easing.cubicOut);
+        \}
+        
+        void jumpTo(double x, double y) \{
+            moveX.set(x);
+            moveY.set(y);
         \}
     \}
     
@@ -432,10 +436,14 @@
         \}
     \}
     
-    Colour randomColour() \{ 
-        return new Colour(random(255), random(255), random(255));
+    List<Colour> randomColours(int count) \{ 
+        return Stream.generate(() -> new Colour(random(255), random(255), random(255)))
+                .limit(count).collect(Collectors.toList());
     \}
 "
+    .time-to-move 0.5357142857142857
+    .edge-width-exp 3.7142857142857144
+    .just-colours false
   }
   @ ./capture-1 video:capture {
     #%graph.x 119
@@ -522,10 +530,10 @@
     .blue 176.85483870967744
   }
   @ ./player-1 video:player {
-    #%graph.x 361
-    #%graph.y 518
+    #%graph.x 418
+    #%graph.y 244
     .video [file "resources/horse.mp4"]
-    .position 0.12167149209427434
+    .position 0.7783756806277707
   }
   @ ./timer-1 core:timing:timer {
     #%graph.x 540
@@ -557,8 +565,8 @@
     .blue 67.86290322580645
   }
   @ ./gl-gradients video:gl:p2d {
-    #%graph.x 1044
-    #%graph.y 719
+    #%graph.x 333
+    #%graph.y 605
     .code "
 
     @P(1)
@@ -636,9 +644,15 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.0
-    .y 1.0
+    .x 0.44375
+    .y 0.015000000000000013
     .mouse-input true
   }
+  ~ ./timer-1!out ./voronoi-composite!move-centers
+  ~ ./color2!out ./voronoi-composite!in-2
+  ~ ./color3!out ./voronoi-composite!in-3
+  ~ ./gl-gradients!out ./voronoi-composite!in-edges
+  ~ ./player-1!out ./voronoi-composite!in-0
   ~ ./voronoi-composite!out ./screen!in
+  ~ ./color!out ./voronoi-composite!in-1
 }
