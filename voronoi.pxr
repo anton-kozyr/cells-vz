@@ -471,97 +471,24 @@ import java.util.concurrent.CopyOnWriteArrayList;
         \}
     \}
 "
-    .cells-count 7
-    .edge-width 10
-    .draw-centers true
+    .movement-speed 140
+    .time-to-move 0.8
+    .edge-width 4
+    .just-colours false
   }
   @ ./capture-1 video:capture {
-    #%graph.x 1160
-    #%graph.y 415
+    #%graph.x 115
+    #%graph.y 444
     .device 2
     .resize-mode Crop
     .align-x 0.3630952380952381
     .align-y 0.10714285714285714
     .zoom 3.1423852237654315
   }
-  @ ./color video:custom {
-    #%graph.x 124
-    #%graph.y 207
-    .code "
-
-    @P(1) @Type.Number(def=100, min=0, max=255) double red;
-    @P(2) @Type.Number(def=100, min=0, max=255) double green;
-    @P(3) @Type.Number(def=100, min=0, max=255) double blue;
-    
-    @Override
-    public void setup() \{
-        noStroke();
-    \}
-    
-    @Override
-    public void draw() \{
-        fill(red, green, blue);
-        rect(0, 0, width, height);
-    \}
-    
-"
-    .red 37.016129032258064
-    .green 205.64516129032256
-    .blue 185.08064516129033
-  }
-  @ ./color1 video:custom {
-    #%graph.x 163
-    #%graph.y 9
-    .code "
-
-    @P(1) @Type.Number(def=100, min=0, max=255) double red;
-    @P(2) @Type.Number(def=100, min=0, max=255) double green;
-    @P(3) @Type.Number(def=100, min=0, max=255) double blue;
-    
-    @Override
-    public void setup() \{
-        noStroke();
-    \}
-    
-    @Override
-    public void draw() \{
-        fill(red, green, blue);
-        rect(0, 0, width, height);
-    \}
-    
-"
-    .red 44.01785714285714
-    .green 203.39285714285717
-    .blue 177.5892857142857
-  }
-  @ ./color2 video:custom {
-    #%graph.x 119
-    #%graph.y 365
-    .code "
-
-    @P(1) @Type.Number(def=100, min=0, max=255) double red;
-    @P(2) @Type.Number(def=100, min=0, max=255) double green;
-    @P(3) @Type.Number(def=100, min=0, max=255) double blue;
-    
-    @Override
-    public void setup() \{
-        noStroke();
-    \}
-    
-    @Override
-    public void draw() \{
-        fill(red, green, blue);
-        rect(0, 0, width, height);
-    \}
-    
-"
-    .red 187.13709677419357
-    .green 84.31451612903226
-    .blue 176.85483870967744
-  }
   @ ./player-1 video:player {
-    #%graph.x 302
-    #%graph.y 130
+    #%graph.x 264
+    #%graph.y 232
+    #%graph.minimized true
     .video [file "resources/horse.mp4"]
     .rate 2
     .resize-mode Scale
@@ -569,35 +496,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
   @ ./timer-1 core:timing:timer {
     #%graph.x 712
     #%graph.y 415
-  }
-  @ ./color3 video:custom {
-    #%graph.x 114
-    #%graph.y 530
-    .code "
-
-    @P(1) @Type.Number(def=100, min=0, max=255) double red;
-    @P(2) @Type.Number(def=100, min=0, max=255) double green;
-    @P(3) @Type.Number(def=100, min=0, max=255) double blue;
-    
-    @Override
-    public void setup() \{
-        noStroke();
-    \}
-    
-    @Override
-    public void draw() \{
-        fill(red, green, blue);
-        rect(0, 0, width, height);
-    \}
-    
-"
-    .red 0.0
-    .green 0.0
-    .blue 0.0
+    .period 2
   }
   @ ./gl-gradients video:gl:p2d {
-    #%graph.x 333
-    #%graph.y 605
+    #%graph.x 294
+    #%graph.y 390
     .code "
 
     @P(1)
@@ -675,14 +578,13 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.015
+    .x 0.02125
     .y 1.0
     .mouse-input true
   }
   @ ./solarize video:gl:p2d {
-    #%graph.x 566
-    #%graph.y 93
-    #%graph.comment Solarizes an image\nby VIDVOX\nCategories : Glitch
+    #%graph.x 556
+    #%graph.y 61
     #%graph.minimized true
     .code "
 
@@ -835,13 +737,178 @@ void main()
     .power-curve 1.3333333333333333
     .inverse true
   }
-  ~ ./color2!out ./voronoi-composite!in-2
+  @ ./colour video:gl:p2d {
+    #%graph.x 49
+    #%graph.y 36
+    #%graph.minimized true
+    .code "import java.awt.Color;
+
+
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+    .red 37.94642857142857
+    .green 204.9107142857143
+    .blue 183.66071428571428
+    .hue 0.4790419340133667
+    .saturation 0.8186274766921997
+    .brightness 0.800000011920929
+    .fragment "uniform vec3 colour;
+
+void main() \{
+    gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
+\}"
+  }
+  @ ./colour1 video:gl:p2d {
+    #%graph.x 49
+    #%graph.y 82
+    .code "import java.awt.Color;
+
+
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+    .red 184.27734375
+    .green 83.671875
+    .blue 176.30859375
+    .hue 0.8465346693992615
+    .saturation 0.5489130616188049
+    .brightness 0.7215686440467834
+    .fragment "uniform vec3 colour;
+
+void main() \{
+    gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
+\}"
+  }
   ~ ./gl-gradients!out ./voronoi-composite!in-edges
-  ~ ./color!out ./voronoi-composite!in-1
   ~ ./player-1!out ./solarize!in
-  ~ ./solarize!out ./voronoi-composite!in-0
   ~ ./voronoi-composite!out ./screen!in
-  ~ ./color!out ./voronoi-composite!in-0
   ~ ./player-1!out ./voronoi-composite!in-3
-  ~ ./capture-1!out ./screen!in
+  ~ ./colour!out ./voronoi-composite!in-1
+  ~ ./colour!out ./voronoi-composite!in-0
+  ~ ./solarize!out ./voronoi-composite!in-0
+  ~ ./timer-1!out ./voronoi-composite!move-cells
+  ~ ./colour1!out ./voronoi-composite!in-edges
+  ~ ./capture-1!out ./voronoi-composite!in-2
+  ~ ./colour1!out ./voronoi-composite!in-2
 }
