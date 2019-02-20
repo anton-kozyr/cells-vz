@@ -15,7 +15,7 @@
     #%graph.x 614
     #%graph.y 31
     .video [file "resources/horse.mp4"]
-    .position 0.9765759190349868
+    .position 0.3036692330119161
   }
   @ ./custom-1 video:custom {
     #%graph.x 537
@@ -190,8 +190,8 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     \}    
     */    
 "
-    .xc 385.455030550787
-    .yc 306.00732335253105
+    .xc 280.4636322729348
+    .yc 371.79299953306565
     .h 300.0
   }
   @ ./capture-1 video:capture {
@@ -323,7 +323,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     \}
     
 "
-    .value 0.02144369727888837
+    .value 0.24025691346030328
     .time 10
   }
   @ ./timer-4 core:timing:timer {
@@ -383,7 +383,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     \}
     
 "
-    .value -0.03456239425158486
+    .value -0.2999895563608961
     .time 10
   }
   ~ ./start-trigger-1!out ./player-1!play
