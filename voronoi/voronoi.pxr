@@ -490,6 +490,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
     #%graph.x 264
     #%graph.y 232
     .video [file "resources/horse.mp4"]
+    .position 0.49520590227840294
     .rate 2
     .resize-mode Scale
   }
@@ -939,7 +940,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
     @P(17) @Type.Boolean(def = false) boolean drawCenters;
     
-    @P(18) @Type.Boolean(def = true) boolean justColours;
+    @P(18) @Type.Boolean(def = true) @OnChange(\"toggleVideoRender\") boolean justColours;
 
     @Inject Ref<List<PVector>> coloursRef;
     
@@ -1131,6 +1132,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
         image(out, 0, 0);
     \}
     
+    void toggleVideoRender() \{
+        //TODO: broadcast to video switcher
+    \}
 
 
     // Cell movement
@@ -1164,6 +1168,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
         cell.startMovingTo(nx, ny, timeToMove);
     \}
+
     
     
     
@@ -1210,11 +1215,34 @@ import java.util.concurrent.CopyOnWriteArrayList;
     .movement-speed 140
     .time-to-move 0.8
     .edge-width 35.433021915415075
-    .just-colours false
   }
   @ ./xfader-1 video:xfader {
-    #%graph.x 518
-    #%graph.y 574
+    #%graph.x 437
+    #%graph.y 559
+  }
+  @ ./video-switch video:custom {
+    #%graph.x 624
+    #%graph.y 516
+    .code "
+
+    @In(1) PImage in;
+    
+    @P(1) @Type.Boolean(def=false) boolean stream;
+
+    @Override
+    public void init() \{
+        attachRenderQuery(\"in-1\", rendering -> rendering && stream);
+    \}
+    
+    @Override
+    public void draw() \{
+        if (stream) \{
+            copy(in);
+            release(in);
+        \}
+    \}
+    
+"
   }
   ~ ./gl-gradients!out ./voronoi-composite!in-edges
   ~ ./player-1!out ./solarize!in

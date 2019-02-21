@@ -1,0 +1,9 @@
+add-libs [file-list "config/libs/*.jar"]
+
+# <<<BUILD>>>
+include [file "audio-in.pxr"]
+include [file "video-out.pxr"]
+
+# <<<RUN>>>
+include [file "config/audio-in_autostart"]
+include [file "config/video-out_autostart"]
