@@ -2,8 +2,6 @@ add-libs [file-list "config/libs/*.jar"]
 
 # <<<BUILD>>>
 include [file "voronoi.pxr"]
-include [file "colour.pxr"]
 
 # <<<RUN>>>
 include [file "config/voronoi_autostart"]
-include [file "config/colour_autostart"]

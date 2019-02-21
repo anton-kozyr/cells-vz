@@ -188,6 +188,7 @@
     .code "import org.kynosarges.tektosyne.geometry.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+
     static final int MAX_CELLS_COUNT = 7;
     static final double EDGE_THRESHOLD = 0.1;
     static final String ALL = \"All\";
@@ -489,7 +490,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
     #%graph.x 264
     #%graph.y 232
     .video [file "resources/horse.mp4"]
-    .position 0.3631545182250449
     .rate 2
     .resize-mode Scale
   }
@@ -578,8 +578,8 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.01625
-    .y 0.8066666666666666
+    .x 0.0
+    .y 1.0
     .mouse-input true
   }
   @ ./solarize video:gl:p2d {
@@ -907,7 +907,6 @@ void main() \{
 import java.util.concurrent.CopyOnWriteArrayList;
 
 
-
     static final int MAX_CELLS_COUNT = 7;
     static final double EDGE_THRESHOLD = 0.1;
     static final String ALL = \"All\";
@@ -1102,7 +1101,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
         if(edgeWidth > EDGE_THRESHOLD) \{
             out.beginDraw();
             out.blendMode(BLEND);
-            out.strokeWeight(edgeWidth*1.1);
+            out.strokeWeight(edgeWidth);
             out.stroke(255);
             
             for (VoronoiEdge edge: results.voronoiEdges) \{
@@ -1210,8 +1209,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 "
     .movement-speed 140
     .time-to-move 0.8
-    .edge-width 4
+    .edge-width 35.433021915415075
     .just-colours false
+  }
+  @ ./xfader-1 video:xfader {
+    #%graph.x 518
+    #%graph.y 574
   }
   ~ ./gl-gradients!out ./voronoi-composite!in-edges
   ~ ./player-1!out ./solarize!in
@@ -1223,7 +1226,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
   ~ ./colour1!out ./voronoi-composite!in-edges
   ~ ./capture-1!out ./voronoi-composite!in-2
   ~ ./colour1!out ./voronoi-composite!in-2
-  ~ ./gl-gradients!out ./voronoi-p2d!in-edges
   ~ ./colour1!out ./voronoi-p2d!in-2
   ~ ./colour1!out ./voronoi-p2d!in-edges
   ~ ./solarize!out ./voronoi-p2d!in-0
@@ -1231,5 +1233,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
   ~ ./colour!out ./voronoi-p2d!in-0
   ~ ./colour!out ./voronoi-p2d!in-1
   ~ ./timer-1!out ./voronoi-p2d!move-cells
+  ~ ./capture-1!out ./voronoi-p2d!in-2
   ~ ./voronoi-p2d!out ./screen!in
 }
