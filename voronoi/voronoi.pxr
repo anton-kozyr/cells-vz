@@ -183,8 +183,8 @@
     .edge-width-exp 4.838709677419354
   }
   @ ./voronoi-composite video:custom {
-    #%graph.x 856
-    #%graph.y 82
+    #%graph.x 1083
+    #%graph.y 744
     .code "import org.kynosarges.tektosyne.geometry.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -478,30 +478,25 @@ import java.util.concurrent.CopyOnWriteArrayList;
     .just-colours false
   }
   @ ./capture-1 video:capture {
-    #%graph.x 115
-    #%graph.y 444
-    .device 2
+    #%graph.x 265
+    #%graph.y 550
     .resize-mode Crop
-    .align-x 0.3630952380952381
-    .align-y 0.10714285714285714
-    .zoom 3.1423852237654315
   }
   @ ./player-1 video:player {
-    #%graph.x 264
-    #%graph.y 232
+    #%graph.x 42
+    #%graph.y 329
     .video [file "resources/horse.mp4"]
-    .position 0.49520590227840294
     .rate 2
     .resize-mode Scale
   }
   @ ./timer-1 core:timing:timer {
-    #%graph.x 646
-    #%graph.y 393
+    #%graph.x 954
+    #%graph.y 539
     .period 2
   }
   @ ./gl-gradients video:gl:p2d {
-    #%graph.x 294
-    #%graph.y 390
+    #%graph.x 491
+    #%graph.y 450
     .code "
 
     @P(1)
@@ -584,9 +579,8 @@ void main() \{
     .mouse-input true
   }
   @ ./solarize video:gl:p2d {
-    #%graph.x 556
-    #%graph.y 61
-    #%graph.minimized true
+    #%graph.x 265
+    #%graph.y 282
     .code "
 
     @In(1)
@@ -739,9 +733,8 @@ void main()
     .inverse true
   }
   @ ./colour video:gl:p2d {
-    #%graph.x 49
-    #%graph.y 36
-    #%graph.minimized true
+    #%graph.x 217
+    #%graph.y 4
     .code "import java.awt.Color;
 
 
@@ -808,12 +801,12 @@ void main()
         rgb.send(rgbaInt);
     \}
 "
-    .red 37.94642857142857
-    .green 204.9107142857143
-    .blue 183.66071428571428
+    .red 38.0
+    .green 208.0
+    .blue 187.0
     .hue 0.4790419340133667
     .saturation 0.8186274766921997
-    .brightness 0.800000011920929
+    .brightness 0.8172043010752689
     .fragment "uniform vec3 colour;
 
 void main() \{
@@ -940,8 +933,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
     @P(17) @Type.Boolean(def = false) boolean drawCenters;
     
-    @P(18) @Type.Boolean(def = true) @OnChange(\"toggleVideoRender\") boolean justColours;
-
+    @P(18) @Type.Boolean(def = true) boolean justColours;
+    
     @Inject Ref<List<PVector>> coloursRef;
     
     List<Cell> cells = new ArrayList<>();
@@ -977,6 +970,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
         coloursRef.apply(list -> \{
             while(list.size() < MAX_CELLS_COUNT) \{
                 list.add(new PVector(random(255), random(255), random(255)));
+//                list.add(new PVector(255, 255, 255));
             \}
         \});
         pointsRef.init(CopyOnWriteArrayList::new);
@@ -1032,9 +1026,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
     @Override public void draw() \{
         updateCellsGeometry();
         cells.subList(0, cellsCount).forEach(this::drawCell);
-//        drawCenters(outEdges);
+        drawCenters(outEdges);
         drawEdges(inEdges, outEdges);
-//        drawOutput(inEdges, outEdges);
     \}
     
     void updateCellsGeometry() \{
@@ -1042,18 +1035,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
         for(int i=0; i<cellsCount; ++i) \{
             PointD oldPoint = pointsRef.get().get(i);
             PointD newPoint = new PointD(d(cells.get(i).moveX), d(cells.get(i).moveY));
-            pointsRef.get().set(i, newPoint);
-            moved |= oldPoint != newPoint;
+            boolean pointMoved = abs(oldPoint.x - newPoint.x) > 1 || abs(oldPoint.y - newPoint.y) > 1;
+            if(pointMoved) \{
+                pointsRef.get().set(i, newPoint);
+                moved = true;
+            \}
         \}
-        if(moved) \{
+        if(moved || results == null) \{
             RectD clipRect = new RectD(0 - edgeWidth/2, 0 - edgeWidth/2, width + edgeWidth/2, height + edgeWidth/2);
-            results = Voronoi.findAll(pointsRef.get().toArray(new PointD\[0\]), clipRect);        
+            results = Voronoi.findAll(pointsRef.get().toArray(new PointD\[0\]), clipRect);
         \}
     \}
     
     void drawCell(Cell cell) \{
         cell.out.ifPresent(out -> cell.in.ifPresent( in -> \{
             out.beginDraw();
+            out.clear();
             out.blendMode(BLEND);
              // if no edges, expanding mask by one pixel to avoid artifacts
             out.strokeWeight(edgeWidth > EDGE_THRESHOLD ? edgeWidth : 1);
@@ -1087,6 +1084,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
     
     void drawCenters(PGraphics2D out) \{
         if(drawCenters) \{
+            out.beginDraw();
             out.blendMode(BLEND);
             out.fill(255);
             out.noStroke();
@@ -1095,6 +1093,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
             for (PointD point: pointsRef.get()) \{
                 out.rect(point.x-dotSize/2, point.y-dotSize/2, dotSize, dotSize);
             \}
+
+            out.endDraw();
+            blendMode(ADD);
+            image(out, 0, 0);
         \}
     \}
     
@@ -1121,21 +1123,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
             image(out, 0, 0);
         \}
     \}
-    
-    void drawOutput(PImage in, PGraphics2D out) \{
-        if (!justColours) \{
-            out.blendMode(MULTIPLY);
-            out.image(in, 0, 0);
-        \}
-        out.endDraw();
-        blendMode(ADD);
-        image(out, 0, 0);
-    \}
-    
-    void toggleVideoRender() \{
-        //TODO: broadcast to video switcher
-    \}
 
+    
 
     // Cell movement
     
@@ -1210,57 +1199,42 @@ import java.util.concurrent.CopyOnWriteArrayList;
             moveY.set(y);
         \}
     \}
-
 "
     .movement-speed 140
     .time-to-move 0.8
-    .edge-width 35.433021915415075
+    .edge-width 4
   }
-  @ ./xfader-1 video:xfader {
-    #%graph.x 437
-    #%graph.y 559
-  }
-  @ ./video-switch video:custom {
-    #%graph.x 624
-    #%graph.y 516
+  @ ./custom-1 core:custom {
+    #%graph.x 699
+    #%graph.y 486
     .code "
 
-    @In(1) PImage in;
-    
-    @P(1) @Type.Boolean(def=false) boolean stream;
+    @T(1) void on() \{
+        justColours.send(false);
+        playVideo.send();
+    \};
 
-    @Override
-    public void init() \{
-        attachRenderQuery(\"in-1\", rendering -> rendering && stream);
-    \}
+    @T(2) void off() \{
+        justColours.send(true);
+        stopVideo.send();
+    \};
     
-    @Override
-    public void draw() \{
-        if (stream) \{
-            copy(in);
-            release(in);
-        \}
-    \}
-    
+    @Out(1) Output justColours;
+    @Out(2) Output playVideo;
+    @Out(3) Output stopVideo;
 "
   }
-  ~ ./gl-gradients!out ./voronoi-composite!in-edges
   ~ ./player-1!out ./solarize!in
-  ~ ./player-1!out ./voronoi-composite!in-3
-  ~ ./colour!out ./voronoi-composite!in-1
-  ~ ./colour!out ./voronoi-composite!in-0
-  ~ ./solarize!out ./voronoi-composite!in-0
-  ~ ./timer-1!out ./voronoi-composite!move-cells
-  ~ ./colour1!out ./voronoi-composite!in-edges
-  ~ ./capture-1!out ./voronoi-composite!in-2
-  ~ ./colour1!out ./voronoi-composite!in-2
   ~ ./colour1!out ./voronoi-p2d!in-2
-  ~ ./colour1!out ./voronoi-p2d!in-edges
-  ~ ./solarize!out ./voronoi-p2d!in-0
-  ~ ./player-1!out ./voronoi-p2d!in-3
-  ~ ./colour!out ./voronoi-p2d!in-0
   ~ ./colour!out ./voronoi-p2d!in-1
   ~ ./timer-1!out ./voronoi-p2d!move-cells
-  ~ ./capture-1!out ./voronoi-p2d!in-2
+  ~ ./gl-gradients!out ./voronoi-p2d!in-edges
+  ~ ./colour1!out ./voronoi-p2d!in-edges
   ~ ./voronoi-p2d!out ./screen!in
+  ~ ./solarize!out ./voronoi-p2d!in-0
+  ~ ./player-1!out ./voronoi-p2d!in-3
+  ~ ./custom-1!just-colours ./voronoi-p2d!just-colours
+  ~ ./custom-1!play-video ./player-1!play
+  ~ ./custom-1!stop-video ./player-1!stop
+  ~ ./colour!out ./voronoi-p2d!in-0
 }
