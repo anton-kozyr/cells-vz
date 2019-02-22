@@ -19,6 +19,7 @@
     @P(1) float\[\] fft;
     
     @Out(1) Output strobe;
+    @Out(2) Output move;
     
 //    LinkedList
     
@@ -35,33 +36,47 @@
             return;
         \}
         int bar = width/fft.length;
-        float avg = Math.abs(fft\[fft.length/2\]);
+        
+        int hiThreshold = fft.length/6;
+        int medThreshold = (fft.length/8*7);
+        double lows = 0, meds = 0, his = 0;
         for(int i = 0; i<fft.length; ++i) \{
-            float c = Math.abs(fft\[i\]);
-            if(i>400) \{
-                avg = (avg + c)/2;
+            double lfft = max(0, log(fft\[i\]*700*i));
+            if(i < hiThreshold) \{
+                his += lfft;
+            \} else if (i >= medThreshold) \{
+                lows += lfft;
+            \} else \{
+                meds += lfft;
             \}
-            double x = bar * i + bar/2;
-            rect(x, 0, bar-1, fft\[i\]*i);
+            rect(bar * i + bar/2, 0, bar-1, lfft*50);
         \}
-        line(700, 0, 700, avg*200);
-        if (avg*200 > 12) \{
-//            strobe.send();
-            log(WARNING, \"Boomts \" + round(avg*200));
+//        log(WARNING, \"!\" + round(his) + \":\" + round(meds) + \":\" + round(lows) + \"| \" + hiThreshold + \":\" + medThreshold + \":\" + fft.length);
+        his /= hiThreshold;
+        meds /= medThreshold - hiThreshold;
+        lows /= fft.length - hiThreshold - medThreshold;
+//        log(WARNING, \":\" + round(his) + \":\" + round(meds) + \":\" + round(lows) + \"| \" + hiThreshold + \":\" + medThreshold + \":\" + fft.length);
+        if (his > 8) \{
+            move.send();
         \}
-//        log(WARNING, \"AVG: \"+ round(avg*10000));
+        if (meds > 6) \{
+//            meds.send();
+        \}
+        if (lows > -10) \{ // WTF < 0 ?
+            strobe.send();
+        \}
     \}
 "
-    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACARB4l20IsgRZBD4M2QHVlq0AgNAVAPrF1P2LH5kEM
+xIxAbc+pQC8xqj4i+YE+IXq+PvEnAT+D9CU/Ixk/Pbtm7D5ZThQ+MjHcPV1Arj3PLPo+rVHCPYT3
+Zz0CwN49WOq4PZipyD3Ab4479BC9Pah1Pz3UE2s9ohX/PUvRUz1jQF48140mPaJP2jyOdmM8tT7n
+PFAjZD2WIBE803Q1PD8MSj0T5Og8mB8kPQik8Dzo7ow8ewuFPQgARTzPmBg8lgAKPOQ/ojzs4GM9
+DpvZPB+HBD0jJyQ8eNvwPB/3ej0yKFQ8M0n6PBX+EDtllHk7xPlWPLQYczxtrFw8H4XGPDdOYTwi
+AjI8SAkIPBTCuTwiKcI8hW4lPLLojjwfZSA7+W/xO3Koejy29Bs8GK3IPAsiZjv7EBY8DUNWPCBc
+pzu/2kI8KAMMO9U3pjwRy0c8NUXsO9i3PDwAGSc8BVuwO6ctXjvcQFE7/DY+O/mxwjv0Ysw78eIw
+O+9HzDvsSpI76rkGO+WXSTvjq2c74mLKO+ECojvdaR473Tf7O9o19jvX+tM71uyAO9VkzjvUb687
+0fWnO9GooTvQIHU7z7rOO825rzvMm8w7ypsSO8sgZDvJvks7yz1zO8iONjvHzv87xw9kO8Z7sDvG
+6Es7xYUOO8N87zvFcUk7xOz7O8OfGjvEnRo="
   }
   @ ./voronoi-p2d video:gl:p2d {
     #%graph.x 1222
@@ -368,13 +383,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
             moveY.set(y);
         \}
     \}
-
 "
-    .draw-centers true
+    .edge-width 17.8642124095088
+    .just-colours false
   }
   @ ./taptempo core:custom {
-    #%graph.x 75
-    #%graph.y 393
+    #%graph.x 238
+    #%graph.y 430
     #%graph.colors Orange
     .code "
 
@@ -424,7 +439,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
         trig.send(1.0);
     \}
 "
-    .period 1.0382595552
+    .period 0.4801960626
     .playing true
   }
   @ ./colour1 video:gl:p2d {
@@ -497,9 +512,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
     \}
 "
     .red 201.0
-    .green 42.5
+    .green 89.11290322580646
     .blue 32.90322580645161
-    .hue 0.00986193586140871
+    .hue 0.05621302127838135
     .saturation 0.8407959938049316
     .brightness 0.7882353067398071
     .fragment "uniform vec3 colour;
@@ -579,9 +594,10 @@ void main() \{
 "
     .red 201.0
     .green 145.0
-    .blue 145.0
-    .saturation 0.27860695123672485
-    .brightness 0.7882353067398071
+    .blue 222.09677419354838
+    .hue 0.7878787517547607
+    .saturation 0.3468468487262726
+    .brightness 0.8705882430076599
     .fragment "uniform vec3 colour;
 
 void main() \{
@@ -589,8 +605,8 @@ void main() \{
 \}"
   }
   @ ./strobe video:gl:p2d {
-    #%graph.x 577
-    #%graph.y 177
+    #%graph.x 654
+    #%graph.y 326
     .code "import java.awt.Color;
 
 
@@ -681,11 +697,106 @@ void main() \{
     );
 \}"
   }
-  ~ ./voronoi-p2d!out ./screen!in
-  ~ ./levels!out ./voronoi-p2d!in-2
+  @ ./strobe1 video:gl:p2d {
+    #%graph.x 871
+    #%graph.y 449
+    .code "import java.awt.Color;
+
+
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(0.5).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+    .red 255.0
+    .green 255.0
+    .blue 255.0
+    .brightness 1.0
+    .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+  }
   ~ ./colour1!out ./voronoi-p2d!in-0
   ~ ./colour2!out ./voronoi-p2d!in-1
-  ~ ./strobe!out ./voronoi-p2d!in-3
   ~ ./strobe!out ./voronoi-p2d!in-edges
   ~ ./levels!strobe ./strobe!strobe
+  ~ ./voronoi-p2d!out ./screen!in
+  ~ ./levels!move ./voronoi-p2d!move-cells
+  ~ ./levels!out ./voronoi-p2d!in-2
+  ~ ./taptempo!trig ./strobe1!strobe
+  ~ ./strobe1!out ./voronoi-p2d!in-3
 }

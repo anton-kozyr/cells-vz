@@ -213,7 +213,7 @@ import java.io.*;
   @ ./gain-1 audio:gain {
     #%graph.x 872
     #%graph.y 70
-    .level 0.3826686030802028
+    .level 1.4287711107814547
   }
   ~ ./fft!power-data ./send-1!in
   ~ ./player-1!out-1 ./fft!in
