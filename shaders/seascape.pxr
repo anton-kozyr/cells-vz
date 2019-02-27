@@ -11,92 +11,9 @@
     .always-on-top true
     .show-cursor true
   }
-  @ ./gl-gradients video:gl:p2d {
-    #%graph.x 370
-    #%graph.y 187
-    .code "
-
-    @P(1)
-    @Type.Number(min = 0, max = 1, def = 0.5)
-    double x;
-    @P(2)
-    @Type.Number(min = 0, max = 1, def = 0.5)
-    double y;
-    @P(3)
-    @Config.Port(false)
-    boolean mouseInput;
-
-    void updateUniforms() \{
-        shader.set(\"time\", millis() / 1000.0);
-        if (mouseInput) \{
-            x = (double) mouseX / width;
-            y = 1.0 - ((double) mouseY / height);
-        \}
-        shader.set(\"mouse\", x, y);
-    \}
-
-    // BOILERPLATE BELOW
-    @P(0)
-    @Type.String(mime = GLSL_FRAGMENT_MIME, template = DEF_FRAG)
-    @OnChange(\"updateShader\")
-    @Config.Port(false)
-    String fragment;
-
-    PShader shader;
-
-    final String DEF_FRAG
-            = \"uniform float time;\\n\"
-            + \"uniform vec2 mouse;\\n\"
-            + \"uniform vec2 resolution;\\n\"
-            + \"\\n\"
-            + \"void main() \{\\n\"
-            + \"    // fragment position\\n\"
-            + \"    vec2 pos = gl_FragCoord.xy/resolution.xy;\\n\"
-            + \"    vec2 dist = mouse - pos;\\n\"
-            + \"    vec3 white = vec3(1.0 - length(dist));\\n\"
-            + \"    gl_FragColor = vec4(white, 1.0);\\n\"
-            + \"\}\";
-
-    @Override
-    public void setup() \{
-        updateShader();
-        noStroke();
-    \}
-
-    @Override
-    public void draw() \{
-        if (shader == null) \{
-            shader = createShader(DEFAULT_VERTEX_SHADER,
-                    fragment.isEmpty() ? DEF_FRAG : fragment);
-        \}
-        shader(shader);
-        updateUniforms();
-        rect(0, 0, width, height);
-        resetShader();
-    \}
-
-    void updateShader() \{
-        shader = null;
-    \}
-
-"
-    .fragment "uniform float time;
-uniform vec2 mouse;
-uniform vec2 resolution;
-
-void main() \{
-    vec2 pos = ( gl_FragCoord.xy / resolution.xy ) * 26.0 - 13.0;
-    float x = sin(time + length(pos.xy)) + cos((mouse.x * 10.0) + pos.x);
-    float y = cos(time + length(pos.xy)) + sin((mouse.y * 10.0)+ pos.y);
-    gl_FragColor = vec4( x * 0.5, y * 0.5, x * y, 1.0 );
-\}"
-    .x 0.0
-    .y 1.0
-    .mouse-input true
-  }
   @ ./warping video:gl:p2d {
-    #%graph.x 610
-    #%graph.y 107
+    #%graph.x 1124
+    #%graph.y 411
     .code "import java.awt.Color;
 
 
@@ -108,24 +25,15 @@ void main() \{
 
     PShader shader;
     
-    @P(1)
-    @Type.Number(min = 0, max = 1, def = 0.5)
-    double x;
-    @P(2)
-    @Type.Number(min = 0, max = 1, def = 0.5)
-    double y;
-    @P(3)
-    @Config.Port(false)
-    boolean mouseInput;
+    @P(1) double\[\] redCell;
+
 
     void updateUniforms() \{
-        shader.set(\"time\", millis());
-        if (mouseInput) \{
-            x = (double) mouseX / width;
-            y = 1.0 - ((double) mouseY / height);
-        \}
-        shader.set(\"mouse\", x, y);
+        shader.set(\"time\", millis()/2);
         shader.set(\"resolution\", width, height);
+        if(redCell != null) \{
+            shader.set(\"redCell\", redCell\[0\], redCell\[1\]);
+        \}
     \}
 
     @Override
@@ -149,9 +57,7 @@ void main() \{
         shader = null;
     \}
 "
-    .x 0.01625
-    .y 0.97
-    .mouse-input true
+    .red-cell "rO0ABXVyAAJbRD6mjBSrY1oeAgAAeHAAAAACQIexo3dhs35Achmqgh32rg=="
     .fragment "// Author @patriciogv - 2015
 // http://patriciogonzalezvivo.com
 
@@ -162,6 +68,7 @@ precision mediump float;
 uniform vec2 resolution;
 uniform vec2 mouse;
 uniform float time;
+uniform vec2 redCell = \{-1.0, -1.0\};
 
 float random (in vec2 _st) \{
     return fract(sin(dot(_st.xy,
@@ -213,7 +120,7 @@ void main() \{
     vec3 color = vec3(0.0);
 
     vec2 q = vec2(0.);
-    q.x = fbm( st + 0.0*ktime);
+    q.x = fbm( st + .0*ktime);
     q.y = fbm( st + vec2(1.0));
 
     vec2 r = vec2(0.);
@@ -222,16 +129,23 @@ void main() \{
 
     float f = fbm(st+r);
 
+    float cell5 = 0.0;
+    if(redCell.x != -1.0 /*&& random(vec2(time, 1.0)) < 0.00001*/) \{
+        vec2 redCellNorm = redCell.xy/resolution.xy;
+        redCellNorm.y = 1 - redCellNorm.y;
+        cell5 = 1/pow(distance(gl_FragCoord.xy/resolution.xy, redCellNorm), 1);
+    \}
+
     color = mix(vec3(0.101961,0.619608,0.666667),
                 vec3(0.666667,0.666667,0.498039),
                 clamp((f*f)*4.0,0.0,1.0));
 
     color = mix(color,
-                vec3(0,0,0.164706),
+                vec3(0.0,0,0.164706),
                 clamp(length(q),0.0,1.0));
 
     color = mix(color,
-                vec3(0.666667,1,1),
+                vec3(0.666667 * cell5,1,1),
                 clamp(length(r.x),0.0,1.0));
 
     gl_FragColor = vec4((f*f*f+.6*f*f+.5*f)*color,1.);
@@ -240,15 +154,11 @@ void main() \{
   }
   @ ./voronoi core:container {
     #%graph.x 937
-    #%graph.y 287
+    #%graph.y 286
     #%praxis.version 4.1.1
-    @ ./timer-1 core:timing:timer {
-      #%graph.x 761
-      #%graph.y 544
-    }
     @ ./voronoi-p2d video:gl:p2d {
-      #%graph.x 977
-      #%graph.y 219
+      #%graph.x 957
+      #%graph.y 100
       .code "import org.kynosarges.tektosyne.geometry.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -282,6 +192,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
     @P(17) @Type.Boolean(def = false) boolean drawCenters;
     
     @P(18) @Type.Boolean(def = true) boolean justColours;
+    
+    @AuxOut(1) Output fifthCell;
     
     @Inject Ref<List<PVector>> coloursRef;
     
@@ -423,9 +335,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
             fill(255);
             noStroke();
             double dotSize = 20;
-            pointsRef.get().forEach(p -> 
-                rect(p.x-dotSize/2, p.y-dotSize/2, dotSize, dotSize)
-            );
+            for(int i=0; i < pointsRef.get().size(); ++i) \{
+                PointD p = pointsRef.get().get(i);
+                if (4 == i) \{
+                    fill(255, 0, 0);
+                \} else \{
+                    fill(255);
+                \}
+                rect(p.x-dotSize/2, p.y-dotSize/2, dotSize, dotSize);
+            \}
         \}
     \}
     
@@ -509,6 +427,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
         vertices = newCoords;
         edges = newEdges;
+        if(cellsCount > 4) \{
+            try \{
+                double\[\] cell4 = new double\[\] \{d(m4x), d(m4y)\};
+                fifthCell.send(PBytes.serialize(cell4));
+            \} catch (Exception e) \{
+                log(ERROR, e, \"Can't serialise coordinates of fifth cell\");
+            \}
+        \}
     \}
 
 
@@ -550,9 +476,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
     \}
 "
       .movements All
-      .movement-speed 40
+      .movement-speed 180
+      .time-to-move 0.8
       .cells-count 20
       .edge-width 2
+      .draw-centers true
       .just-colours false
     }
     @ ./video-shader video:container:in {
@@ -564,25 +492,26 @@ import java.util.concurrent.CopyOnWriteArrayList;
       #%graph.y 358
     }
     @ ./edges video:container:in {
-      #%graph.x 761
-      #%graph.y 394
+      #%graph.x 680
+      #%graph.y 285
     }
     @ ./move core:container:in {
-      #%graph.x 391
-      #%graph.y 132
+      #%graph.x 571
+      #%graph.y 444
+    }
+    @ ./fifth-cell core:container:out {
+      #%graph.x 1198
+      #%graph.y 432
     }
     ~ ./voronoi-p2d!out ./out!in
     ~ ./edges!out ./voronoi-p2d!in-edges
-    ~ ./video-shader!out ./voronoi-p2d!in-0
-    ~ ./video-shader!out ./voronoi-p2d!in-1
-    ~ ./video-shader!out ./voronoi-p2d!in-2
-    ~ ./video-shader!out ./voronoi-p2d!in-3
-    ~ ./video-shader!out ./voronoi-p2d!in-4
+    ~ ./move!out ./voronoi-p2d!move-cells
+    ~ ./voronoi-p2d!fifth-cell ./fifth-cell!in
     ~ ./video-shader!out ./voronoi-p2d!in-5
   }
   @ ./squares video:gl:p2d {
-    #%graph.x 610
-    #%graph.y 287
+    #%graph.x 629
+    #%graph.y 237
     .code "import java.awt.Color;
 
 
@@ -594,26 +523,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
     PShader shader;
     
-    @P(1)
-    @Type.Number(min = 0, max = 1, def = 0.5)
-    double x;
-    @P(2)
-    @Type.Number(min = 0, max = 1, def = 0.5)
-    double y;
-    @P(3)
-    @Config.Port(false)
-    boolean mouseInput;
+    double rand;
 
     void updateUniforms() \{
-        shader.set(\"time\", millis());
-        if (mouseInput) \{
-            x = (double) mouseX / width;
-            y = 1.0 - ((double) mouseY / height);
-        \}
-        shader.set(\"mouse\", x, y);
         shader.set(\"resolution\", width, height);
+        shader.set(\"rand\", rand);
     \}
-
+    
+    @T(1) void shuffle() \{
+        rand = random(100);
+    \}
+    
     @Override
     public void setup() \{
         updateShader();
@@ -635,9 +555,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
         shader = null;
     \}
 "
-    .x 0.01625
-    .y 0.97
-    .mouse-input true
     .fragment "// Author @patriciogv - 2015
 // Title: Mosaic
 
@@ -646,11 +563,10 @@ precision mediump float;
 #endif
 
 uniform vec2 resolution;
-uniform vec2 mouse;
-uniform float time;
+uniform float rand;
 
 float random (vec2 st) \{
-    return fract(sin(dot(st.xy+time/2000000000, // change this to control speed of squares: 2000000000 is slow
+    return fract(sin(dot(st.xy*rand,
                          vec2(12.9898,78.233)))*
         43758.5453123);
 \}
@@ -672,8 +588,8 @@ void main() \{
 \}"
   }
   @ ./lines video:gl:p2d {
-    #%graph.x 704
-    #%graph.y 470
+    #%graph.x 629
+    #%graph.y 336
     .code "import java.awt.Color;
 
 
@@ -781,13 +697,133 @@ void main() \{
 \}
 "
   }
-  @ ./line-timer core:timing:timer {
-    #%graph.x 426
-    #%graph.y 487
+  @ ./tapdiv core:custom {
+    #%graph.x 403
+    #%graph.y 485
+    #%graph.colors Orange
+    .code "
+
+    @P(1) @Type.Number(min = 0.00001, max = 60, def = 1)
+    double divider;
+
+    double out = 0;
+    double previousOut = 0;
+
+    double previous = 0;
+    double tracker = 0;
+
+    @Out(1) Output trig;
+    @Out(2) Output unit;
+
+
+    @In(1) void unitin(double ui)\{
+        if(ui < previous) tracker++;
+        previous = ui;
+        out = ((tracker+ui)/divider) - (int)((tracker+ui)/divider);
+        unit.send(out);
+        if(previousOut > out) trig.send(1);
+        previousOut = out;
+    \}
+
+"
+    .divider 8
+  }
+  @ ./taptempo core:custom {
+    #%graph.x 79
+    #%graph.y 261
+    #%graph.colors Orange
+    #%graph.comment Tap tempo component\ntrig : trigger on the beat\nunit : provides a unit interval\npare with tapdiv to slow down unit over \nmultiple beats, ie 4 beats
+    .code "
+
+    @P(1) @Type.Number(min = 0.001, max = 60, def = 1)
+    double period;
+
+    @P(2) @Type.Number @ReadOnly
+    Property time;
+    
+    @P(4) @Type.Number(min = -500, max = 500, def = 0) double shift;
+
+    @P(3) @Type.Boolean() boolean playing = true;
+
+    @Out(1) Output trig;
+    @Out(2) Output unit;
+
+    @Inject Property chrono;
+
+    final int ARRAY_SIZE = 5;
+    double\[\] timeArray = new double\[ARRAY_SIZE\];
+
+    @Override
+    public void update() \{
+        if (!time.isAnimating() && playing) \{
+            time.set(0).to(1).in(period);
+            trig.send(1.0);
+        \}
+        unit.send(d(time));
+    \}
+
+    @T(0) void tap()\{
+        if(d(chrono) < 12)\{
+            for(int i = ARRAY_SIZE-1; i > 0; i--)\{
+                timeArray\[i\] = timeArray\[i-1\];
+            \}
+            timeArray\[0\] = d(chrono);
+            double _sum = 0;
+            for(int i = 0; i < ARRAY_SIZE; i++)\{
+                _sum += timeArray\[i\];
+            \}
+            period = (_sum/ARRAY_SIZE) + shift;
+            time.animator().in(period);
+        \}
+        chrono.set(0).to(1000).in(1000);
+    \}
+    
+    @T(1) void trigger()\{
+        time.set(0).to(1).in(period);
+        trig.send(1.0);
+    \}
+"
+    .period 0.15879896519999998
+    .playing true
+  }
+  @ ./tapdiv1 core:custom {
+    #%graph.x 393
+    #%graph.y 312
+    #%graph.colors Orange
+    .code "
+
+    @P(1) @Type.Number(min = 0.00001, max = 60, def = 1)
+    double divider;
+
+    double out = 0;
+    double previousOut = 0;
+
+    double previous = 0;
+    double tracker = 0;
+
+    @Out(1) Output trig;
+    @Out(2) Output unit;
+
+
+    @In(1) void unitin(double ui)\{
+        if(ui < previous) tracker++;
+        previous = ui;
+        out = ((tracker+ui)/divider) - (int)((tracker+ui)/divider);
+        unit.send(out);
+        if(previousOut > out) trig.send(1);
+        previousOut = out;
+    \}
+
+"
+    .divider 4
   }
   ~ ./lines!out ./voronoi!edges
-  ~ ./line-timer!out ./lines!animate
   ~ ./voronoi!out ./screen!in
   ~ ./warping!out ./screen!in
+  ~ ./tapdiv!trig ./voronoi!move
+  ~ ./taptempo!unit ./tapdiv!unitin
+  ~ ./tapdiv1!trig ./lines!animate
+  ~ ./taptempo!unit ./tapdiv1!unitin
+  ~ ./voronoi!fifth-cell ./warping!red-cell
   ~ ./squares!out ./voronoi!video-shader
 }

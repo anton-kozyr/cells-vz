@@ -1,0 +1,7 @@
+add-libs [file-list "config/libs/*.jar"]
+
+# <<<BUILD>>>
+include [file "data-tidal.pxr"]
+
+# <<<RUN>>>
+include [file "config/data-tidal_autostart"]

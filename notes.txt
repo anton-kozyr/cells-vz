@@ -6,3 +6,25 @@ https://github.com/umlaeute/v4l2loopback
 
 # Weird issue with GStreamer failing to play to v4l2sink
 https://github.com/umlaeute/v4l2loopback/issues/116
+
+# Forward OSC data from SuperCollider
+// http://doc.sccode.org/Classes/OSCdef.html
+
+// initialise forwarding function
+var addr = NetAddr.new("localhost", 3333);
+OSCdef(\tidalplay2, {
+    arg msg;
+    addr.sendMsg("/play2", *msg);
+}, '/play2', n);
+
+// clear forwarding function
+OSCdef(\tidalplay2).clear;
+// unregister OSCdef
+OSCdef(\tidalplay2).free;
+
+// list all OSCdefs
+OSCdef.all.do(_.postln)
+
+# Test forwarding is working
+sudo nc -ul 3333
+

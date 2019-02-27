@@ -1,0 +1,126 @@
+@ /data-tidal root:data {
+  #%praxis.version 4.1.1
+  @ ./osc-receive core:custom {
+    #%graph.x 659
+    #%graph.y 395
+    #%graph.comment // http://doc.sccode.org/Classes/OSCdef.html\n\n// initialise forwarding function\nvar addr = NetAddr.new(\"localhost\", 3333);\nOSCdef(\\tidalplay2, \{\n    arg msg;\n    addr.sendMsg(\"/play2\", *msg);\n\}, '/play2', n);\n\n// clear forwarding function\nOSCdef(\\tidalplay2).clear;\n// unregister OSCdef\nOSCdef(\\tidalplay2).free;\n\n// list all OSCdefs\nOSCdef.all.do(_.postln)\n
+    .code "import de.sciss.net.*;
+import java.io.IOException;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+
+    @P(1) @Type.Integer(def = 3333) @Config.Port(false)
+    Property port;
+
+    @Inject
+    Ref<OSCServer> osc;
+
+    @Inject
+    Ref<Queue<OSCMessage>> queue;
+
+    @Out(1) Output out;
+
+    OSCListener listener;
+
+    @Override
+    public void init() \{
+        port.link(d -> osc.clear());
+        queue.init(ConcurrentLinkedQueue::new);
+        listener = (msg, sa, l) -> \{
+                queue.ifPresent(q -> q.add(msg));
+        \};
+    \}
+
+    @Override
+    public void update() \{
+        osc.init(() -> \{
+            try \{
+                OSCServer s = OSCServer.newUsing(OSCServer.UDP, i(port));
+                s.addOSCListener(listener);
+                s.start();
+                return s;
+            \} catch (IOException ex) \{
+                log(ERROR, ex);
+                return null;
+            \}
+        \}).onDispose(s -> \{
+            s.removeOSCListener(listener);
+            s.dispose();
+        \});
+
+        queue.ifPresent(q -> \{
+            OSCMessage msg;
+            while ((msg = q.poll()) != null) \{
+                Value\[\] vals = new Value\[msg.getArgCount() + 1\];
+                vals\[0\] = PString.valueOf(msg.getName());
+                for (int i = 0; i < msg.getArgCount(); i++) \{
+                    Object arg = msg.getArg(i);
+                    if (arg instanceof Number) \{
+                        vals\[i + 1\] = PNumber.valueOf(((Number)
+arg).doubleValue());
+                    \} else \{
+                        vals\[i + 1\] = PString.valueOf(arg.toString());
+                    \}
+                \}
+                out.send(PArray.valueOf(vals));
+            \}
+        \});
+
+    \}
+
+
+"
+  }
+  @ ./osc-filter core:custom {
+    #%graph.x 931
+    #%graph.y 395
+    .code "
+
+    @P(1) @ReadOnly Value address;
+    @P(2) @ReadOnly Value arg1;
+    @P(3) @ReadOnly Value arg2;
+    @P(4) @ReadOnly Value arg3;
+    @P(5) @ReadOnly Value arg4;
+    @P(6) @ReadOnly Value arg5;
+    @P(7) @ReadOnly Value arg6;
+    @P(8) @ReadOnly Value arg7;
+    @P(9) @ReadOnly Value arg8;
+    @P(10) @ReadOnly Value arg9;
+    
+
+    @In(1) void in(PArray in) \{
+        address = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = arg9 = PString.EMPTY;
+        switch (in.getSize()) \{
+            case 10:
+                arg9 = in.get(9);
+            case 9:
+                arg8 = in.get(8);
+            case 8:
+                arg7 = in.get(7);
+            case 7:
+                arg6 = in.get(6);
+            case 6:
+                arg5 = in.get(5);
+            case 5:
+                arg4 = in.get(4);
+            case 4:
+                arg3 = in.get(3);
+            case 3:
+                arg2 = in.get(2);
+            case 2:
+                arg1 = in.get(1);
+            case 1:
+                address = in.get(0);
+        \}
+        StringBuilder sb = new StringBuilder(\"\[ \");
+        sb.append(in.stream().map(v -> v.toString()).collect(Collectors.joining(\", \")));
+        sb.append(\" \]\");
+        log(ERROR, sb.toString());
+    \}
+
+"
+  }
+  ~ ./osc-receive!out ./osc-filter!in
+}
