@@ -1,55 +1,30 @@
 @ /data-tidal root:data {
   #%praxis.version 4.1.1
   @ ./osc-receive core:custom {
-    #%graph.x 659
-    #%graph.y 395
-    #%graph.comment // http://doc.sccode.org/Classes/OSCdef.html\n\n// initialise forwarding function\nvar addr = NetAddr.new(\"localhost\", 3333);\nOSCdef(\\tidalplay2, \{\n    arg msg;\n    addr.sendMsg(\"/play2\", *msg);\n\}, '/play2', n);\n\n// clear forwarding function\nOSCdef(\\tidalplay2).clear;\n// unregister OSCdef\nOSCdef(\\tidalplay2).free;\n\n// list all OSCdefs\nOSCdef.all.do(_.postln)\n
+    #%graph.x 90
+    #%graph.y 242
+    #%graph.comment In SuperCollider run the following:\n\nvar addr = NetAddr.new(\"localhost\", 3333);\nOSCdef(\\tidalplay2, \{\n    arg msg;\n    addr.sendMsg(\"/play2\", *msg);\n\}, '/play2', n);
     .code "import de.sciss.net.*;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 
-    @P(1) @Type.Integer(def = 3333) @Config.Port(false)
-    Property port;
-
-    @Inject
-    Ref<OSCServer> osc;
-
-    @Inject
-    Ref<Queue<OSCMessage>> queue;
-
+    @P(1) @Type.Integer(def = 3333) @Config.Port(false) @OnChange(\"resetServer\")
+    int port;
+    
     @Out(1) Output out;
 
-    OSCListener listener;
+    @Inject Ref<OSCServer> osc;
+    @Inject Ref<Queue<OSCMessage>> queue;
 
-    @Override
+    @Override 
     public void init() \{
-        port.link(d -> osc.clear());
         queue.init(ConcurrentLinkedQueue::new);
-        listener = (msg, sa, l) -> \{
-                queue.ifPresent(q -> q.add(msg));
-        \};
+        initServer();
     \}
 
     @Override
     public void update() \{
-        osc.init(() -> \{
-            try \{
-                OSCServer s = OSCServer.newUsing(OSCServer.UDP, i(port));
-                s.addOSCListener(listener);
-                s.start();
-                return s;
-            \} catch (IOException ex) \{
-                log(ERROR, ex);
-                return null;
-            \}
-        \}).onDispose(s -> \{
-            s.removeOSCListener(listener);
-            s.dispose();
-        \});
-
         queue.ifPresent(q -> \{
             OSCMessage msg;
             while ((msg = q.poll()) != null) \{
@@ -58,8 +33,7 @@ import java.util.logging.Logger;
                 for (int i = 0; i < msg.getArgCount(); i++) \{
                     Object arg = msg.getArg(i);
                     if (arg instanceof Number) \{
-                        vals\[i + 1\] = PNumber.valueOf(((Number)
-arg).doubleValue());
+                        vals\[i + 1\] = PNumber.valueOf(((Number) arg).doubleValue());
                     \} else \{
                         vals\[i + 1\] = PString.valueOf(arg.toString());
                     \}
@@ -69,13 +43,34 @@ arg).doubleValue());
         \});
 
     \}
+    
+    void initServer() \{
+        osc.init(() -> \{
+            try \{
+                OSCServer s = OSCServer.newUsing(OSCServer.UDP, port);
+                s.start();
+                return s;
+            \} catch (IOException ex) \{
+                log(ERROR, ex);
+                return null;
+            \}
+        \})
+        .bind(OSCServer::addOSCListener, OSCServer::removeOSCListener,
+                (msg, sa, l) -> queue.apply(q -> q.add(msg)))
+        .onDispose(s -> s.dispose());
+    \}
+    
+    void resetServer() \{
+        osc.clear();
+        initServer();
+    \}
 
 
 "
   }
   @ ./osc-filter core:custom {
-    #%graph.x 931
-    #%graph.y 395
+    #%graph.x 299
+    #%graph.y 242
     .code "
 
     @P(1) @ReadOnly Value address;
@@ -91,6 +86,8 @@ arg).doubleValue());
     
 
     @In(1) void in(PArray in) \{
+//        log(ERROR, in.toString());
+
         address = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = arg9 = PString.EMPTY;
         switch (in.getSize()) \{
             case 10:
