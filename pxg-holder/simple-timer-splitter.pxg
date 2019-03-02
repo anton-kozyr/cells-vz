@@ -1,0 +1,29 @@
+#%praxis.version 4.1.1
+@ ./simple-timer-splitter core:custom {
+  #%graph.x 0
+  #%graph.y 0
+  .code "
+
+    // Works on normal timer, no phase support
+    
+    @Inject Ref<int\[\]> counterRef;
+    
+    @P(0) @Type.Integer(def=2, suggested=\{2,4,8,16\}) int div;
+    
+    @Out(0) Output out;
+    
+    @T(0) void trigger() \{
+        int c = (counterRef.get()\[0\] + 1) % div;
+        if (0 == c) \{
+            out.send();
+        \}
+        counterRef.apply(counter -> counter\[0\] = c);
+    \}
+    
+    @Override
+    public void init() \{
+        counterRef.init(() -> new int\[1\]);
+    \}    
+"
+  .div 8
+}

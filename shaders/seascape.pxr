@@ -57,7 +57,7 @@
         shader = null;
     \}
 "
-    .red-cell "rO0ABXVyAAJbRD6mjBSrY1oeAgAAeHAAAAACQIexo3dhs35Achmqgh32rg=="
+    .red-cell "rO0ABXVyAAJbRD6mjBSrY1oeAgAAeHAAAAACQIMYXjKk/OlAeCJ0PCBh7w=="
     .fragment "// Author @patriciogv - 2015
 // http://patriciogonzalezvivo.com
 
@@ -153,7 +153,7 @@ void main() \{
 "
   }
   @ ./voronoi core:container {
-    #%graph.x 937
+    #%graph.x 930
     #%graph.y 286
     #%praxis.version 4.1.1
     @ ./voronoi-p2d video:gl:p2d {
@@ -478,9 +478,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
       .movements All
       .movement-speed 180
       .time-to-move 0.8
-      .cells-count 20
+      .cells-count 8
       .edge-width 2
-      .draw-centers true
       .just-colours false
     }
     @ ./video-shader video:container:in {
@@ -503,11 +502,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
       #%graph.x 1198
       #%graph.y 432
     }
-    ~ ./voronoi-p2d!out ./out!in
     ~ ./edges!out ./voronoi-p2d!in-edges
     ~ ./move!out ./voronoi-p2d!move-cells
     ~ ./voronoi-p2d!fifth-cell ./fifth-cell!in
     ~ ./video-shader!out ./voronoi-p2d!in-5
+    ~ ./voronoi-p2d!out ./out!in
   }
   @ ./squares video:gl:p2d {
     #%graph.x 629

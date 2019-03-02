@@ -384,12 +384,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
         \}
     \}
 "
+    .movements All
+    .movement-speed 140
+    .time-to-move 0.4
+    .cells-count 7
     .edge-width 17.8642124095088
     .just-colours false
   }
   @ ./taptempo core:custom {
-    #%graph.x 238
-    #%graph.y 430
+    #%graph.x 75
+    #%graph.y 468
     #%graph.colors Orange
     .code "
 
@@ -439,12 +443,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
         trig.send(1.0);
     \}
 "
-    .period 0.4801960626
+    .period 0.0033089666
     .playing true
   }
   @ ./colour1 video:gl:p2d {
-    #%graph.x 385
-    #%graph.y 42
+    #%graph.x 348
+    #%graph.y -52
     .code "import java.awt.Color;
 
 
@@ -524,8 +528,8 @@ void main() \{
 \}"
   }
   @ ./colour2 video:gl:p2d {
-    #%graph.x 480
-    #%graph.y 101
+    #%graph.x 429
+    #%graph.y 4
     .code "import java.awt.Color;
 
 
@@ -605,11 +609,11 @@ void main() \{
 \}"
   }
   @ ./strobe video:gl:p2d {
-    #%graph.x 654
-    #%graph.y 326
+    #%graph.x 601
+    #%graph.y 137
     .code "import java.awt.Color;
 
-
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
     @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
     @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
     @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
@@ -649,7 +653,7 @@ void main() \{
     
     @T(0) void strobe() \{
         strobeBrightness.set(1);
-        strobeBrightness.to(0).in(0.5).easing(Easing.cubicIn);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
     \}
 
     void updateShader() \{
@@ -681,9 +685,12 @@ void main() \{
         rgb.send(rgbaInt);
     \}
 "
+    .ease 0.4
     .red 255.0
-    .green 255.0
-    .blue 255.0
+    .green 77.0
+    .blue 200.0
+    .hue 0.8846153846153846
+    .saturation 0.6980392336845398
     .brightness 1.0
     .fragment "uniform vec3 colour;
 uniform float brightness;
@@ -698,11 +705,11 @@ void main() \{
 \}"
   }
   @ ./strobe1 video:gl:p2d {
-    #%graph.x 871
-    #%graph.y 449
+    #%graph.x 823
+    #%graph.y 377
     .code "import java.awt.Color;
 
-
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
     @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
     @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
     @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
@@ -742,7 +749,7 @@ void main() \{
     
     @T(0) void strobe() \{
         strobeBrightness.set(1);
-        strobeBrightness.to(0).in(0.5).easing(Easing.cubicIn);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
     \}
 
     void updateShader() \{
@@ -774,9 +781,12 @@ void main() \{
         rgb.send(rgbaInt);
     \}
 "
-    .red 255.0
+    .ease .2
+    .red 98.0
     .green 255.0
-    .blue 255.0
+    .blue 70.0
+    .hue 0.3076923076923077
+    .saturation 0.7254902124404907
     .brightness 1.0
     .fragment "uniform vec3 colour;
 uniform float brightness;
@@ -790,13 +800,132 @@ void main() \{
     );
 \}"
   }
+  @ ./osc-receive core:custom {
+    #%graph.x 111
+    #%graph.y 327
+    .code "import de.sciss.net.*;
+import java.io.IOException;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+
+    @P(1) @Type.Integer(def = 3333) @Config.Port(false) @OnChange(\"resetServer\")
+    int port;
+    
+    @Out(1) Output out;
+
+    @Inject Ref<OSCServer> osc;
+    @Inject Ref<Queue<OSCMessage>> queue;
+
+    @Override 
+    public void init() \{
+        queue.init(ConcurrentLinkedQueue::new);
+        initServer();
+    \}
+
+    @Override
+    public void update() \{
+        queue.ifPresent(q -> \{
+            OSCMessage msg;
+            while ((msg = q.poll()) != null) \{
+                Value\[\] vals = new Value\[msg.getArgCount() + 1\];
+                vals\[0\] = PString.valueOf(msg.getName());
+                for (int i = 0; i < msg.getArgCount(); i++) \{
+                    Object arg = msg.getArg(i);
+                    if (arg instanceof Number) \{
+                        vals\[i + 1\] = PNumber.valueOf(((Number) arg).doubleValue());
+                    \} else \{
+                        vals\[i + 1\] = PString.valueOf(arg.toString());
+                    \}
+                \}
+                out.send(PArray.valueOf(vals));
+            \}
+        \});
+
+    \}
+    
+    void initServer() \{
+        osc.init(() -> \{
+            try \{
+                OSCServer s = OSCServer.newUsing(OSCServer.UDP, port);
+                s.start();
+                return s;
+            \} catch (IOException ex) \{
+                log(ERROR, ex);
+                return null;
+            \}
+        \})
+        .bind(OSCServer::addOSCListener, OSCServer::removeOSCListener,
+                (msg, sa, l) -> queue.apply(q -> q.add(msg)))
+        .onDispose(s -> s.dispose());
+    \}
+    
+    void resetServer() \{
+        osc.clear();
+        initServer();
+    \}
+
+
+"
+  }
+  @ ./osc-filter core:custom {
+    #%graph.x 305
+    #%graph.y 452
+    .code "
+
+    @Out(0) Output edges;
+    @Out(1) Output move;
+    @Out(2) Output cell;
+    
+
+    @In(1) void in(PArray in) \{
+//        StringBuilder sb = new StringBuilder(\"\[ \");
+//        sb.append(in.stream().map(v -> v.toString()).collect(Collectors.joining(\", \")));
+//        sb.append(\" \]\");
+//        log(ERROR, sb.toString());
+        
+        Map<String, String> oscMap = new HashMap<>();
+        for(int i=0; i<in.getSize()/1; i+=2) \{
+            oscMap.put(in.get(i).toString(), in.get(i+1).toString());
+        \}
+        log(ERROR, oscMap.toString());
+        
+        matchAndSend(oscMap);
+    \}
+
+    void matchAndSend(Map<String, String> oscMap) \{
+        // skip silence
+        if (\"0.0\".equals(oscMap.get(\"gain\"))) \{
+            return;
+        \}
+        
+        Map<String, String> cellMap = new HashMap<>();
+        cellMap.put(\"s\", \"nockicks\");
+        
+        Map<String, String> moveMap = new HashMap<>();
+        moveMap.put(\"s\", \"tlvocals\");
+//        moveMap.put(\"n\", \"8.0\");
+        
+        Map<String, String> edgesMap = new HashMap<>();
+        edgesMap.put(\"s\", \"mdbrims\");
+        
+        if(oscMap.entrySet().containsAll(cellMap.entrySet())) \{
+            cell.send();
+        \} else if(oscMap.entrySet().containsAll(moveMap.entrySet())) \{
+            move.send();
+        \} else if(oscMap.entrySet().containsAll(edgesMap.entrySet())) \{
+            edges.send();
+        \}
+    \}
+"
+  }
   ~ ./colour1!out ./voronoi-p2d!in-0
   ~ ./colour2!out ./voronoi-p2d!in-1
   ~ ./strobe!out ./voronoi-p2d!in-edges
-  ~ ./levels!strobe ./strobe!strobe
   ~ ./voronoi-p2d!out ./screen!in
-  ~ ./levels!move ./voronoi-p2d!move-cells
-  ~ ./levels!out ./voronoi-p2d!in-2
-  ~ ./taptempo!trig ./strobe1!strobe
   ~ ./strobe1!out ./voronoi-p2d!in-3
+  ~ ./osc-receive!out ./osc-filter!in
+  ~ ./colour2!out ./voronoi-p2d!in-2
+  ~ ./osc-filter!move ./voronoi-p2d!move-cells
+  ~ ./osc-filter!edges ./strobe!strobe
+  ~ ./osc-filter!cell ./strobe1!strobe
 }

@@ -1,0 +1,7 @@
+@ /midi root:midi {
+  #%praxis.version 4.1.1
+  .device "nanoKONTROL2 \[hw:1,0,0\]"
+  @ ./tap midi:control-in {
+    .binding /video-out/taptempo.tap
+  }
+}
