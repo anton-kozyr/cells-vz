@@ -1,7 +1,7 @@
 @ /data-tidal root:data {
   #%praxis.version 4.1.1
   @ ./osc-receive core:custom {
-    #%graph.x 90
+    #%graph.x 100
     #%graph.y 242
     #%graph.comment In SuperCollider run the following:\n\nvar addr = NetAddr.new(\"localhost\", 3333);\nOSCdef(\\tidalplay2, \{\n    arg msg;\n    addr.sendMsg(\"/play2\", *msg);\n\}, '/play2', n);
     .code "import de.sciss.net.*;

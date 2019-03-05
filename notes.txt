@@ -1,6 +1,21 @@
 # GStreamer
 http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/
 
+# Receive from another box on port 9999 and show
+gst-launch-1.0 udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec ! autovideosink
+
+# Create virtual video device
+sudo modprobe v4l2loopback devices=1
+# or
+sudo modprobe v4l2loopback video_nr=1
+ls /dev/video*
+
+# Clear devices
+sudo modprobe -r v4l2loopback
+
+# Receive and redirect to virtual device
+gst-launch-1.0 udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec ! videoscale ! videoconvert ! tee ! v4l2sink device=/dev/video1
+
 # Virtual video device
 https://github.com/umlaeute/v4l2loopback
 
@@ -11,7 +26,7 @@ https://github.com/umlaeute/v4l2loopback/issues/116
 // http://doc.sccode.org/Classes/OSCdef.html
 
 // initialise forwarding function
-var addr = NetAddr.new("localhost", 3333);
+var addr = NetAddr.new("IPADDRESS", 3333);
 OSCdef(\tidalplay2, {
     arg msg;
     addr.sendMsg("/play2", *msg);
@@ -25,6 +40,19 @@ OSCdef(\tidalplay2).free;
 // list all OSCdefs
 OSCdef.all.do(_.postln)
 
+# Sending silence from tidal
+p "100" $ fast 16 $ sound "u1"
+
 # Test forwarding is working
 sudo nc -ul 3333
 
+# UFW open
+sudo ufw allow proto udp to 0.0.0.0/0 port 9999
+sudo ufw allow proto udp to 0.0.0.0/0 port 3333
+
+# UFW close
+sudo ufw delete allow proto udp to 0.0.0.0/0 port 9999
+sudo ufw delete allow proto udp to 0.0.0.0/0 port 3333
+
+
+# UFW close
