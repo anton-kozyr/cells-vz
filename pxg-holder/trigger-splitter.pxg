@@ -1,0 +1,44 @@
+#%praxis.version 4.1.1
+@ ./trigger-splitter core:custom {
+  #%graph.x 0
+  #%graph.y 0
+  .code "
+    @P(0) @Type.Number(def=0) @ReadOnly Property counter;
+    
+    @Out(0) Output outEach;
+    @Out(1) Output out1Of2;
+    @Out(2) Output out2Of2;
+    @Out(3) Output out1Of4;
+    @Out(4) Output out2Of4;
+    @Out(5) Output out3Of4;
+    @Out(6) Output out4Of4;
+    @Out(7) Output out1Of8;
+    @Out(8) Output out2Of8;
+    @Out(9) Output out3Of8;
+    @Out(10) Output out4Of8;
+    @Out(11) Output out5Of8;
+    @Out(12) Output out6Of8;
+    @Out(13) Output out7Of8;
+    @Out(14) Output out8Of8;
+    
+    @T(0) void trigger() \{
+        int count = i(counter);
+        counter.set((count + 1) % 8);
+        outEach.send();
+        switch(count) \{
+            case 0: out1Of2.send(); out1Of4.send(); out1Of8.send(); break;
+            case 1: out2Of2.send(); out2Of4.send(); out2Of8.send(); break;
+            case 2: out1Of2.send(); out3Of4.send(); out3Of8.send(); break;
+            case 3: out2Of2.send(); out4Of4.send(); out4Of8.send(); break;
+            case 4: out1Of2.send(); out1Of4.send(); out5Of8.send(); break;
+            case 5: out2Of2.send(); out2Of4.send(); out6Of8.send(); break;
+            case 6: out1Of2.send(); out3Of4.send(); out7Of8.send(); break;
+            case 7: out2Of2.send(); out4Of4.send(); out8Of8.send(); break;
+        \}
+    \}
+    
+    @T(1) void reset() \{
+        counter.set(0);
+    \}
+"
+}

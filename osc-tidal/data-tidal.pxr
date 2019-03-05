@@ -69,7 +69,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 "
   }
   @ ./osc-filter core:custom {
-    #%graph.x 299
+    #%graph.x 395
     #%graph.y 242
     .code "
 
@@ -84,10 +84,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
     @P(9) @ReadOnly Value arg8;
     @P(10) @ReadOnly Value arg9;
     
+    @P(20) @Type.String String key;
+    @P(21) @Type.String String value;
+    
+    @Out(1) Output out;
+    
 
     @In(1) void in(PArray in) \{
-//        log(ERROR, in.toString());
-
         address = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = arg9 = PString.EMPTY;
         switch (in.getSize()) \{
             case 10:
@@ -115,8 +118,24 @@ import java.util.concurrent.ConcurrentLinkedQueue;
         sb.append(in.stream().map(v -> v.toString()).collect(Collectors.joining(\", \")));
         sb.append(\" \]\");
         log(ERROR, sb.toString());
+        matchAndSend(in);
     \}
 
+    void matchAndSend(PArray in) \{
+        if(null == key || null == value) \{
+            log(WARNING, \"Key and Value must be specified\");
+            return;
+        \}
+        for(int i=2; i<in.getSize()-1; ++i) \{
+            String entry = in.get(i).toString();
+            if (key.equals(entry)) \{
+                String entry2 = in.get(i+1).toString();
+                if (value.equals(entry2)) \{
+                    out.send();
+                \}
+            \}
+        \}
+    \}
 "
   }
   ~ ./osc-receive!out ./osc-filter!in
