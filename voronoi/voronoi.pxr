@@ -1,22 +1,23 @@
 @ /voronoi root:video {
   #%autostart true
   #%praxis.version 4.1.1
-  .renderer "OpenGL:GL4"
-  .width 800
-  .height 600
+  .renderer OpenGL
+  .width 1920
+  .height 1200
   .fps 60.0
   @ ./screen video:output {
     #%graph.x 1370
     #%graph.y 343
     .rotation 0
     .always-on-top true
+    .undecorated true
     .show-cursor true
   }
   @ ./player-1 video:player {
     #%graph.x 42
     #%graph.y 329
     .video [file "resources/horse.mp4"]
-    .position 0.03032735033802295
+    .position 0.9947435669061994
     .resize-mode Scale
   }
   @ ./timer-1 core:timing:timer {
@@ -104,8 +105,8 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.60375
-    .y 0.9933333333333333
+    .x 0.010416666666666666
+    .y 0.52
     .mouse-input true
   }
   @ ./solarize video:gl:p2d {
@@ -730,8 +731,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
     .movement-speed 140
     .time-to-move 0.8
     .cells-count 10
-    .edge-width 4
-    .just-colours false
+    .edge-width 8
   }
   @ ./main-control core:custom {
     #%graph.x 686
