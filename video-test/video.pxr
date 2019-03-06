@@ -2,8 +2,8 @@
   #%autostart true
   #%praxis.version 4.1.1
   .renderer OpenGL
-  .width 800
-  .height 600
+  .width 1920
+  .height 1200
   .fps 60.0
   @ ./screen video:output {
     #%graph.x 862
@@ -12,13 +12,13 @@
     .show-cursor true
   }
   @ ./stream video:capture {
-    #%graph.x 659
+    #%graph.x 660
     #%graph.y 111
-    .device 2
+    .device "udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec"
     .resize-mode Scale
     .align-x 0.41333333333333333
     .align-y 0.4
-    .zoom 4
+    .zoom 0.5
     .source-width 1920
     .source-height 1080
   }
@@ -28,5 +28,4 @@
   }
   ~ ./stream!out ./screen!in
   ~ ./start!out ./stream!play
-  ~ ./stream!error ./stream!play
 }
