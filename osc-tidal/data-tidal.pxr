@@ -69,7 +69,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 "
   }
   @ ./osc-filter core:custom {
-    #%graph.x 395
+    #%graph.x 299
     #%graph.y 242
     .code "
 
@@ -84,13 +84,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
     @P(9) @ReadOnly Value arg8;
     @P(10) @ReadOnly Value arg9;
     
-    @P(20) @Type.String String key;
-    @P(21) @Type.String String value;
-    
-    @Out(1) Output out;
-    
 
     @In(1) void in(PArray in) \{
+//        log(ERROR, in.toString());
+
         address = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = arg9 = PString.EMPTY;
         switch (in.getSize()) \{
             case 10:
@@ -118,25 +115,66 @@ import java.util.concurrent.ConcurrentLinkedQueue;
         sb.append(in.stream().map(v -> v.toString()).collect(Collectors.joining(\", \")));
         sb.append(\" \]\");
         log(ERROR, sb.toString());
-        matchAndSend(in);
     \}
 
-    void matchAndSend(PArray in) \{
-        if(null == key || null == value) \{
-            log(WARNING, \"Key and Value must be specified\");
-            return;
-        \}
-        for(int i=2; i<in.getSize()-1; ++i) \{
-            String entry = in.get(i).toString();
-            if (key.equals(entry)) \{
-                String entry2 = in.get(i+1).toString();
-                if (value.equals(entry2)) \{
-                    out.send();
-                \}
-            \}
-        \}
-    \}
 "
   }
+  @ ./taptempo core:custom {
+    #%graph.x 653
+    #%graph.y 223
+    #%graph.colors Orange
+    #%graph.comment Tap tempo component\ntrig : trigger on the beat\nunit : provides a unit interval\npare with tapdiv to slow down unit over \nmultiple beats, ie 4 beats
+    .code "
+
+    @P(1) @Type.Number(min = 0.001, max = 60, def = 1)
+    double period;
+
+    @P(2) @Type.Number @ReadOnly
+    Property time;
+
+    @P(3) @Type.Boolean() boolean playing = true;
+
+    @Out(1) Output trig;
+    @Out(2) Output unit;
+
+    @Inject Property chrono;
+
+    final int ARRAY_SIZE = 5;
+    double\[\] timeArray = new double\[ARRAY_SIZE\];
+
+    @Override
+    public void update() \{
+        if (!time.isAnimating() && playing) \{
+            time.set(0).to(1).in(period);
+            trig.send(1.0);
+        \}
+        unit.send(d(time));
+    \}
+
+    @T(0) void tap()\{
+        if(d(chrono) < 12)\{
+            for(int i = ARRAY_SIZE-1; i > 0; i--)\{
+                timeArray\[i\] = timeArray\[i-1\];
+            \}
+            timeArray\[0\] = d(chrono);
+            double _sum = 0;
+            for(int i = 0; i < ARRAY_SIZE; i++)\{
+                _sum += timeArray\[i\];
+            \}
+            period = (_sum/ARRAY_SIZE);
+            time.animator().in(period);
+        \}
+        chrono.set(0).to(1000).in(1000);
+    \}
+    
+    @T(1) void trigger()\{
+        time.set(0).to(1).in(period);
+        trig.send(1.0);
+    \}
+"
+    .period 0.09362655580000001
+    .playing true
+  }
   ~ ./osc-receive!out ./osc-filter!in
+  ~ ./osc-receive!out ./taptempo!tap
 }

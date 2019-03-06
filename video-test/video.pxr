@@ -14,13 +14,13 @@
   }
   @ ./stream video:capture {
     #%graph.x 659
-    #%graph.y 210
+    #%graph.y 111
     .device 2
-    .align-x 0.1907514450867052
-    .zoom 5.2893702461479775
+    .align-x 0.41333333333333333
+    .align-y 0.4
+    .zoom 3.387399600987654
     .source-width 1920
     .source-height 1080
-    .source-fps 60
   }
   @ ./start core:start-trigger {
     #%graph.x 469
