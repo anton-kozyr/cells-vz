@@ -1,6 +1,16 @@
 # Receive from another box on port 9999 and show
 gst-launch-1.0 udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec ! autovideosink
 
+# Send with position change, resizing, ans pixel aspect ratio
+gst-launch-1.0 -v ximagesrc startx=960 starty=600 use-damage=false xname=/usr/lib/torcs/torcs-bin ! videoconvert ! videoscale ! video/x-raw,format=I420,width=960,height=800,pixel-aspect-ratio=4/3,framerate=25/1 ! jpegenc ! rtpjpegpay ! udpsink host=192.168.2.20 port=9999
+
+
+# Receive from another bos mpeg4 stream
+
+
+# Send mpeg4 encoded stream (use bitrate to control quality)
+gst-launch-1.0 -v ximagesrc use-damage=false xname=/usr/lib/torcs/torcs-bin ! videoconvert ! videoscale ! video/x-raw,width=1920,height=1080 ! avenc_mpeg4 bitrate=5000000 ! rtpmp4vpay config-interval=3 ! udpsink host=192.168.2.20 port=9999
+
 # GStreamer
 http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/
 
