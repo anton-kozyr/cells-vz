@@ -8,6 +8,7 @@
   @ ./screen video:output {
     #%graph.x 1313
     #%graph.y 365
+    .device 2
     .always-on-top true
     .undecorated true
     .show-cursor true
@@ -279,7 +280,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
             ny = cell.y() + sin(alpha) * deltaMove;
             deltaMove *= 0.7; // slow down to avoid infinite loop
         \} while (nx < 0 || nx > width || ny < 0 || ny > height);
-
+        
         cell.startMovingTo(nx, ny, timeToMove);
     \}
     
@@ -361,6 +362,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
         \}
     \}
 "
+    .movements All
     .movement-speed 10
     .time-to-move .4
     .cells-count 40
@@ -480,7 +482,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-3 video:gl:p2d {
       #%graph.x 435
@@ -588,7 +589,6 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-4 video:gl:p2d {
       #%graph.x 573
@@ -696,7 +696,6 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-5 video:gl:p2d {
       #%graph.x 711
@@ -804,7 +803,6 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-6 video:gl:p2d {
       #%graph.x 849
@@ -912,7 +910,6 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-2 video:gl:p2d {
       #%graph.x 297
@@ -1020,7 +1017,6 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-0 video:gl:p2d {
       #%graph.x 21
@@ -1128,7 +1124,6 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./colour-7 video:gl:p2d {
       #%graph.x 987
@@ -1224,17 +1219,12 @@ void main() \{
         rgb.send(rgbaInt);
     \}
 "
-      .hex-rgb "#FFFFFF"
-      .red 255.0
-      .green 255.0
-      .blue 255.0
-      .brightness 1.0
+      .hex-rgb "#0"
       .fragment "uniform vec3 colour;
 
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
-      .on false
     }
     @ ./out-0 video:container:out {
       #%graph.x 1180
@@ -2169,7 +2159,8 @@ void main() \{
   @ ./strobe-control core:timing:timer {
     #%graph.x 103
     #%graph.y 606
-    .code "
+    .code "import org.praxislive.video.pgl.code.userapi.PImage;
+
 
     @Out(0) Output out0;
     @Out(1) Output out1;
@@ -2179,7 +2170,7 @@ void main() \{
     @Out(5) Output out5;
     @Out(6) Output out6;
     @Out(7) Output out7;
-
+    
     @T(0) public void strobe0() \{ out0.send(); \}
     @T(1) public void strobe1() \{ out1.send(); \}
     @T(2) public void strobe2() \{ out2.send(); \}
@@ -2244,8 +2235,7 @@ void main() \{
     .rgb-4 "#fbd06b"
     .rgb-5 "#769f85"
     .rgb-6 "#ff6530"
-    .rgb-7 ffffff
-    .on false
+    .rgb-7 000000
   }
   @ ./timer-1 core:timing:timer {
     #%graph.x -609
@@ -2422,8 +2412,8 @@ void main() \{
 "
   }
   @ ./lines video:gl:p2d {
-    #%graph.x -76
-    #%graph.y -88
+    #%graph.x 79
+    #%graph.y -37
     .code "import java.awt.Color;
 
 
@@ -2849,13 +2839,14 @@ void main() \{
     #%graph.y 1121
   }
   @ ./vide-switch core:property {
-    #%graph.x 548
+    #%graph.x 612
     #%graph.y -295
     .code "
 
     @P(1) @Type.Boolean(def=true) @OnChange(\"onOff\") Property on;
 
     @Out(1) Output out;
+    @Out(2) Output notOut;
     
     @Override
     public void starting() \{
@@ -2864,8 +2855,8 @@ void main() \{
     
     void onOff() \{
         out.send(on.getBoolean());
+        notOut.send(!on.getBoolean());
     \}
-    
 "
     .on false
   }
@@ -3121,18 +3112,10 @@ void main() \{
 
     @P(20) @Type.Boolean(def=true) boolean on;
    
-    @P(10)
-    @Type.String(mime = GLSL_FRAGMENT_MIME)
-    @OnChange(\"updateShader\")
-    @Config.Port(false)
-    String fragment;
-
-    PShader shader;
-
     @Override
     public void setup() \{
-        updateShader();
         noStroke();
+        fill(255);
     \}
 
     @Override
@@ -3140,25 +3123,97 @@ void main() \{
         if (!on) \{
             return;
         \}
-        
-        if (shader == null) \{
-            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
-        \}
-        shader(shader);
-        shader.set(\"colour\", 255, 255, 255);
         rect(0, 0, width, height);
-        resetShader();
-    \}
-
-    void updateShader() \{
-        shader = null;
     \}
 "
-    .fragment "uniform vec3 colour;
+    .on false
+  }
+  @ ./taptempo core:custom {
+    #%graph.x -593
+    #%graph.y 27
+    #%graph.colors Orange
+    #%graph.comment Tap tempo component\ntrig : trigger on the beat\nunit : provides a unit interval\npare with tapdiv to slow down unit over \nmultiple beats, ie 4 beats
+    .code "
 
-void main() \{
-    gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
-\}"
+    @P(1) @Type.Number(min = 0.001, max = 60, def = 1)
+    double period;
+
+    @P(2) @Type.Number @ReadOnly
+    Property time;
+
+    @P(3) @Type.Boolean() boolean playing = true;
+
+    @Out(1) Output trig;
+    @Out(2) Output unit;
+
+    @Inject Property chrono;
+
+    final int ARRAY_SIZE = 5;
+    double\[\] timeArray = new double\[ARRAY_SIZE\];
+
+    @Override
+    public void update() \{
+        if (!time.isAnimating() && playing) \{
+            time.set(0).to(1).in(period);
+            trig.send(1.0);
+        \}
+        unit.send(d(time));
+    \}
+
+    @T(0) void tap()\{
+        if(d(chrono) < 12)\{
+            for(int i = ARRAY_SIZE-1; i > 0; i--)\{
+                timeArray\[i\] = timeArray\[i-1\];
+            \}
+            timeArray\[0\] = d(chrono);
+            double _sum = 0;
+            for(int i = 0; i < ARRAY_SIZE; i++)\{
+                _sum += timeArray\[i\];
+            \}
+            period = (_sum/ARRAY_SIZE);
+            time.animator().in(period);
+        \}
+        chrono.set(0).to(1000).in(1000);
+    \}
+    
+    @T(1) void trigger()\{
+        time.set(0).to(1).in(period);
+        trig.send(1.0);
+    \}
+"
+    .period 0.47664851960000004
+    .playing true
+  }
+  @ ./tapdiv core:custom {
+    #%graph.x -308
+    #%graph.y 101
+    #%graph.colors Orange
+    .code "
+
+    @P(1) @Type.Number(min = 0.00001, max = 60, def = 1)
+    double divider;
+
+    double out = 0;
+    double previousOut = 0;
+
+    double previous = 0;
+    double tracker = 0;
+
+    @Out(1) Output trig;
+    @Out(2) Output unit;
+
+
+    @In(1) void unitin(double ui)\{
+        if(ui < previous) tracker++;
+        previous = ui;
+        out = ((tracker+ui)/divider) - (int)((tracker+ui)/divider);
+        unit.send(out);
+        if(previousOut > out) trig.send(1);
+        previousOut = out;
+    \}
+
+"
+    .divider .5
   }
   ~ ./voronoi-p2d!out ./screen!in
   ~ ./strobes!out-1 ./voronoi-p2d!in-1
@@ -3167,7 +3222,6 @@ void main() \{
   ~ ./strobes!out-4 ./voronoi-p2d!in-4
   ~ ./strobes!out-5 ./voronoi-p2d!in-5
   ~ ./strobes!out-6 ./voronoi-p2d!in-6
-  ~ ./strobes!out-7 ./voronoi-p2d!in-edges
   ~ ./strobe-control!out-0 ./strobes!in-0
   ~ ./strobe-control!out-1 ./strobes!in-1
   ~ ./strobe-control!out-2 ./strobes!in-2
@@ -3181,22 +3235,8 @@ void main() \{
   ~ ./colour-control!out-2 ./colours!in-2
   ~ ./colour-control!out-3 ./colours!in-3
   ~ ./colour-control!out-4 ./colours!in-4
-  ~ ./colour-control!out-5 ./colours!in-5
-  ~ ./colour-control!out-6 ./colours!in-6
-  ~ ./colour-control!out-7 ./colours!in-7
-  ~ ./timer-1!out ./trigger-splitter!trigger
   ~ ./strobes!out-0 ./voronoi-p2d!in-0
-  ~ ./trigger-splitter!out-1-of-4 ./lines!animate
-  ~ ./trigger-splitter!out-3-of-4 ./squares!shuffle
-  ~ ./trigger-splitter!out-4-of-4 ./squares!shuffle
-  ~ ./colours!out-0 ./voronoi-p2d!in-0
   ~ ./colour-control!out-on ./colours!in-switch
-  ~ ./colours!out-1 ./voronoi-p2d!in-1
-  ~ ./colours!out-2 ./voronoi-p2d!in-2
-  ~ ./colours!out-3 ./voronoi-p2d!in-3
-  ~ ./colours!out-4 ./voronoi-p2d!in-4
-  ~ ./colours!out-5 ./voronoi-p2d!in-5
-  ~ ./colours!out-6 ./voronoi-p2d!in-6
   ~ ./warping!out ./video-splitter!in-for-all
   ~ ./video-splitter!out-0 ./voronoi-p2d!in-0
   ~ ./vide-switch!out ./video-splitter!switch
@@ -3208,12 +3248,26 @@ void main() \{
   ~ ./video-splitter!out-6 ./voronoi-p2d!in-6
   ~ ./squares!out ./video-splitter-2!in-for-all
   ~ ./vide-switch-1!out ./video-splitter-2!switch
-  ~ ./video-splitter-2!out-0 ./voronoi-p2d!in-0
   ~ ./video-splitter-2!out-1 ./voronoi-p2d!in-1
-  ~ ./trigger-splitter!out-7-of-8 ./strobe-control!strobe-7
-  ~ ./trigger-splitter!out-6-of-8 ./strobe-control!strobe-7
-  ~ ./trigger-splitter!out-7-of-8 ./voronoi-p2d!add-cell
-  ~ ./trigger-splitter!out-8-of-8 ./voronoi-p2d!add-cell
-  ~ ./trigger-splitter!out-each ./voronoi-p2d!add-cell
   ~ ./white!out ./voronoi-p2d!in-edges
+  ~ ./colours!out-7 ./voronoi-p2d!in-edges
+  ~ ./video-splitter-2!out-2 ./voronoi-p2d!in-2
+  ~ ./taptempo!trig ./trigger-splitter!trigger
+  ~ ./strobes!out-7 ./voronoi-p2d!in-edges
+  ~ ./colour-control!out-5 ./colours!in-5
+  ~ ./colour-control!out-6 ./colours!in-6
+  ~ ./colour-control!out-7 ./colours!in-7
+  ~ ./colours!out-3 ./voronoi-p2d!in-3
+  ~ ./colours!out-4 ./voronoi-p2d!in-4
+  ~ ./colours!out-5 ./voronoi-p2d!in-5
+  ~ ./colours!out-6 ./voronoi-p2d!in-6
+  ~ ./trigger-splitter!out-each ./lines!animate
+  ~ ./trigger-splitter!out-2-of-2 ./squares!shuffle
+  ~ ./taptempo!unit ./tapdiv!unitin
+  ~ ./trigger-splitter!out-each ./strobe-control!strobe-0
+  ~ ./trigger-splitter!out-1-of-2 ./voronoi-p2d!move-cells
+  ~ ./trigger-splitter!out-2-of-2 ./strobe-control!strobe-1
+  ~ ./colours!out-2 ./voronoi-p2d!in-2
+  ~ ./colours!out-1 ./voronoi-p2d!in-1
+  ~ ./colours!out-0 ./voronoi-p2d!in-0
 }
