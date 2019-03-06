@@ -1,14 +1,13 @@
 @ /video root:video {
   #%autostart true
-  #%graph.comment # SENDING SCREEN STREAM\n\n1) Grab screen and send via udp\ngst-launch-1.0 -v ximagesrc use-damage=false xname=/usr/lib/torcs/torcs-bin ! videoconvert ! videoscale ! video/x-raw,format=I420,framerate=25/1 ! jpegenc ! rtpjpegpay ! udpsink host=localhost port=9999\n\n*) Change resolution\nvideo/x-raw,format=I420,width=800,height=600,framerate=25/1\n\n\n\n# RECEIVING STREAM\n\n1) Create virtual video device\nsudo modprobe v4l2loopback video_nr=1\n\n2) # Receive and redirect to virtual device\ngst-launch-1.0 udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec ! videoscale ! videoconvert ! tee ! v4l2sink device=/dev/video1\n
   #%praxis.version 4.1.1
   .renderer OpenGL
   .width 800
   .height 600
   .fps 60.0
   @ ./screen video:output {
-    #%graph.x 855
-    #%graph.y 260
+    #%graph.x 862
+    #%graph.y 161
     .always-on-top true
     .show-cursor true
   }
@@ -16,16 +15,18 @@
     #%graph.x 659
     #%graph.y 111
     .device 2
+    .resize-mode Scale
     .align-x 0.41333333333333333
     .align-y 0.4
-    .zoom 3.387399600987654
+    .zoom 4
     .source-width 1920
     .source-height 1080
   }
   @ ./start core:start-trigger {
-    #%graph.x 469
-    #%graph.y 210
+    #%graph.x 456
+    #%graph.y 111
   }
   ~ ./stream!out ./screen!in
   ~ ./start!out ./stream!play
+  ~ ./stream!error ./stream!play
 }

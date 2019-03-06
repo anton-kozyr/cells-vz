@@ -1,2 +1,5 @@
 ERROR : /video/stream
+Failed to allocate a buffer
+ERROR : /video/stream
 Internal data flow error.
+
