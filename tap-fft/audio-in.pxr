@@ -54,6 +54,8 @@ import org.jaudiolibs.pipes.Pipe;
         if (send) \{
             send = false;
             try \{
+                // uncomment to test sending
+                //log(ERROR, \"Sending \" + PBytes.serialize(power));
                 powerData.send(PBytes.serialize(power));
             \} catch (Exception ex) \{
                 log(ERROR, ex);
@@ -225,9 +227,9 @@ import org.jaudiolibs.pipes.Pipe;
     .channels 1
   }
   @ ./gain-1 audio:gain {
-    #%graph.x 872
+    #%graph.x 873
     #%graph.y 70
-    .level 0.0039287605220954406
+    .level 3.9331966835736364E-4
   }
   @ ./osc-1 audio:osc {
     #%graph.x 479
