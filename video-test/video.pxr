@@ -1,6 +1,7 @@
 @ /video root:video {
   #%autostart true
   #%praxis.version 4.1.1
+  #%graph.comment mpeg4\nudpsrc port=9999 caps = \"application/x-rtp\\,\\ media\\=\\(string\\)video\\,\\ clock-rate\\=\\(int\\)90000\\,\\ encoding-name\\=\\(string\\)MP4V-ES\\,\\ profile-level-id\\=\\(string\\)1\\,\\ payload\\=\\(int\\)96\\,\\ ssrc\\=\\(uint\\)2873740600\\,\\ timestamp-offset\\=\\(uint\\)391825150\\,\\ seqnum-offset\\=\\(uint\\)2980\" ! rtpmp4vdepay ! avdec_mpeg4\n\nmjpeg\nudpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec
   .renderer OpenGL
   .width 1920
   .height 1200
@@ -12,13 +13,10 @@
     .show-cursor true
   }
   @ ./stream video:capture {
-    #%graph.x 660
+    #%graph.x 657
     #%graph.y 111
-    .device "udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec"
+    .device "udpsrc port=9999 caps = \"application/x-rtp\\,\\ media\\=\\(string\\)video\\,\\ clock-rate\\=\\(int\\)90000\\,\\ encoding-name\\=\\(string\\)MP4V-ES\\,\\ profile-level-id\\=\\(string\\)1\\,\\ payload\\=\\(int\\)96\\,\\ ssrc\\=\\(uint\\)2873740600\\,\\ timestamp-offset\\=\\(uint\\)391825150\\,\\ seqnum-offset\\=\\(uint\\)2980\" ! rtpmp4vdepay ! avdec_mpeg4"
     .resize-mode Scale
-    .align-x 0.41333333333333333
-    .align-y 0.4
-    .zoom 0.5
     .source-width 1920
     .source-height 1080
   }

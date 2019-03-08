@@ -1,15 +1,26 @@
+#### udp mjpeg ####
+
 # Receive from another box on port 9999 and show
 gst-launch-1.0 udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec ! autovideosink
 
 # Send with position change, resizing, ans pixel aspect ratio
 gst-launch-1.0 -v ximagesrc startx=960 starty=600 use-damage=false xname=/usr/lib/torcs/torcs-bin ! videoconvert ! videoscale ! video/x-raw,format=I420,width=960,height=800,pixel-aspect-ratio=4/3,framerate=25/1 ! jpegenc ! rtpjpegpay ! udpsink host=192.168.2.20 port=9999
 
+#### udp mpeg4 ####
 
 # Receive mpeg4 stream from another host
 gst-launch-1.0 -v udpsrc port=9999 caps = "application/x-rtp\,\ media\=\(string\)video\,\ clock-rate\=\(int\)90000\,\ encoding-name\=\(string\)MP4V-ES\,\ profile-level-id\=\(string\)1\,\ payload\=\(int\)96\,\ ssrc\=\(uint\)2873740600\,\ timestamp-offset\=\(uint\)391825150\,\ seqnum-offset\=\(uint\)2980" ! rtpmp4vdepay ! avdec_mpeg4 ! autovideosink
 
 # Send mpeg4 encoded stream (use bitrate to control quality)
 gst-launch-1.0 -v ximagesrc use-damage=false xname=/usr/lib/torcs/torcs-bin ! videoconvert ! videoscale ! video/x-raw,width=1920,height=1080 ! avenc_mpeg4 bitrate=5000000 ! rtpmp4vpay config-interval=3 ! udpsink host=192.168.2.20 port=9999
+
+#### tcp h264 ####
+
+# Create server for streaming
+gst-launch-1.0 ximagesrc startx=0 show-pointer=true use-damage=0 ! videoconvert ! x264enc bitrate=32000 tune=zerolatency speed-preset=veryfast threads=1 key-int-max=15 intra-refresh=true ! video/x-h264, profile=baseline, framerate=30/1 ! mpegtsmux ! tcpserversink host=192.168.2.10 port=9999
+
+# Create client for receiving
+gst-launch-1.0 tcpclientsrc host=192.168.2.10 port=9999 ! tsdemux ! h264parse ! video/x-h264 ! avdec_h264 ! autovideosink sync=false
 
 # GStreamer
 http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/

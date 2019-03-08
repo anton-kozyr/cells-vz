@@ -1,0 +1,14 @@
+@ /eq root:video {
+  #%pxr.format 4
+  #%autostart true
+  .width 800
+  .height 600
+  .fps 60.0
+  .renderer OpenGL
+  @ ./screen video:output {
+    #%graph.x 600
+    #%graph.y 200
+    .always-on-top true
+    .show-cursor true
+  }
+}

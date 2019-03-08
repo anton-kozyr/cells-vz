@@ -2,81 +2,195 @@
   #%autostart true
   #%praxis.version 4.1.1
   .renderer OpenGL
-  .width 800
-  .height 600
+  .width 1920
+  .height 1200
   .fps 60.0
   @ ./screen video:output {
-    #%graph.x 1624
-    #%graph.y 87
+    #%graph.x 1055
+    #%graph.y -21
+    .device 2
     .always-on-top true
+    .undecorated true
     .show-cursor true
   }
   @ ./levels video:gl:p2d {
-    #%graph.x 89
-    #%graph.y 104
+    #%graph.x 75
+    #%graph.y 29
     .code "
 
-    @P(1) float\[\] fft;
+    @P(1) @OnChange(\"processFFT\") float\[\] fftIn;
+    @P(2) @Type.Number(def=0.2, min=0, max=1) double smoothing;
     
-    @Out(1) Output strobe;
-    @Out(2) Output move;
+    float\[\] fft;
+    int maxFFT;
+    final int MAX_FREQ = 10910;
     
-//    LinkedList
+    @P(10) int strobeFreq = Integer.MAX_VALUE;
+    @P(11) double strobePower = Double.MAX_VALUE; 
+    @P(12) int strobePowerAdjusted = Integer.MAX_VALUE;
+    @P(13) int strobeFreqBand = Integer.MAX_VALUE;
+    
+    @Inject Property bgStrobe;
+    @Inject Property fgStrobe;
+    
     
     @Override
     public void setup() \{
-        noStroke();
-        fill(255);
+        rectMode(CORNERS);
+        ellipseMode(CENTER);
     \}
+
+    void processFFT() \{
+        if(null == fft) \{
+            fft = fftIn;
+        \}
+        maxFFT = fftIn.length/2;
+        float\[\] newFFT = new float\[maxFFT\];
+        float s = (float) smoothing;
+        for (int i=0; i<maxFFT; ++i) \{
+            newFFT\[i\] = fft\[i\]*s + fftIn\[i\]*(1-s);
+        \}
+    \}
+    
 
     @Override
     public void draw() \{
-//        log(WARNING, \"LEN: \" +fft.length);
-        if (fft.length == 0) \{
+        if(null == fft || fft.length == 0) \{
             return;
         \}
-        int bar = width/fft.length;
-        
-        int hiThreshold = fft.length/6;
-        int medThreshold = (fft.length/8*7);
-        double lows = 0, meds = 0, his = 0;
-        for(int i = 0; i<fft.length; ++i) \{
-            double lfft = max(0, log(fft\[i\]*700*i));
-            if(i < hiThreshold) \{
-                his += lfft;
-            \} else if (i >= medThreshold) \{
-                lows += lfft;
-            \} else \{
-                meds += lfft;
+        strokeWeight(1);
+        fill(255);
+        stroke(255);
+        boolean mouseHit = false;
+        int eqWidth = width - 400;
+        int bar = (width - 100)/(maxFFT);
+        for(int i = 0; i<maxFFT; ++i) \{
+            float amp = fft\[i\];
+            double displayAmp = (30.0 * log(amp * 100.0));
+            int left = bar*i;
+            int right = bar*i+bar;
+            rect(left+1, height, right-1, height-displayAmp);
+            if(left <= mouseX && right >= mouseX && displayAmp > height - mouseY) \{
+                mouseHit = true;
             \}
-            rect(bar * i + bar/2, 0, bar-1, lfft*50);
+            if(amp >= strobePower && i == strobeFreqBand && !bgStrobe.isAnimating()) \{
+                bgStrobe.set(135).to(0).in(0.2).easeIn();
+                ellipse((left+right)/2, height-displayAmp, 100, 100);
+            \}
         \}
-//        log(WARNING, \"!\" + round(his) + \":\" + round(meds) + \":\" + round(lows) + \"| \" + hiThreshold + \":\" + medThreshold + \":\" + fft.length);
-        his /= hiThreshold;
-        meds /= medThreshold - hiThreshold;
-        lows /= fft.length - hiThreshold - medThreshold;
-//        log(WARNING, \":\" + round(his) + \":\" + round(meds) + \":\" + round(lows) + \"| \" + hiThreshold + \":\" + medThreshold + \":\" + fft.length);
-        if (his > 8) \{
-            move.send();
-        \}
-        if (meds > 6) \{
-//            meds.send();
-        \}
-        if (lows > -10) \{ // WTF < 0 ?
-            strobe.send();
+        fill(255);
+        text(String.format(\"FFT Bands: %d\", maxFFT), width - 100, height - 20);
+        printFreqPowerInfo(width - 300, height - 300, strobeFreqBand, strobeFreq, strobePower, strobePowerAdjusted);
+        
+        strokeWeight(0.5);
+        stroke(mouseHit ? 255 : 0, mouseHit ? 0 : 255, 0);
+        if (pmouseX < eqWidth) \{
+            line(pmouseX, 0, pmouseX, height);
+            line(0, pmouseY, eqWidth, pmouseY);
+            int freqBand = maxFFT * pmouseX / eqWidth;
+            int freq = MAX_FREQ * pmouseX / eqWidth;
+            int adjustedPowerMouse = height-pmouseY;
+            double powerMouse = exp((double)adjustedPowerMouse/30.0)/100;
+            
+            printFreqPowerInfo(pmouseX, pmouseY, freqBand, freq, powerMouse, adjustedPowerMouse);
+            if (mousePressed) \{
+                strobeFreq = freq;
+                strobePower = powerMouse;
+                strobePowerAdjusted = adjustedPowerMouse;
+                strobeFreqBand = freqBand;
+            \}
         \}
     \}
+    
+    void printFreqPowerInfo(int leftX, int bottomY, int freqBand, int freq, double power, int adjustedPower) \{
+        noStroke();
+        fill(0, 60);
+        rect(leftX + 2, bottomY - 2, leftX + 170, bottomY - 56);
+        fill(0, 255, 0);
+        text(String.format(\"Band:  %d\", freqBand), leftX + 5, bottomY - 44);
+        text(String.format(\"Frequency:  ~%dHz\", freq), leftX + 5, bottomY - 31);
+        text(String.format(\"Adjusted power:  %.0f\", power), leftX + 5, bottomY - 18);
+        text(String.format(\"Raw power:  %dcans\", adjustedPower), leftX + 5, bottomY - 5);
+    \}
 "
-    .fft "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    .fft-in "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAAQAPmivvj60kAg/ielNQtG5TT+EfN8+Yb+hP9CkVD51
+CeI96dWFQSGvKD7HhzNCFYZ8QRLQkT8p/YxBMhKpQIuCPj7E/b8+U/u7QIejnj7kmac+k2a+PjW+
+TD5JTTc9JCqYPe0xjT3UTGw89hU6PPLftDuJTn09LYjtPHE/xjyYbjM70ualPIM0nTy45HI8T85g
+PAYUJDwja9w76MPiPAZUpDwfTkM7nm/MO6gwXTvdvx87yIwWO5cNJDwIFSc7+EcUO4d5SDu37PU7
+lnKJO3SKczuZeyE7fc4mO42zjTuM4hA7Z0DoO1my2zthPyQ7WwOOOzcGTTtUS8E7RC0pOzDuRzsm
+pVM7KE/lOxWotDs504s7GaW8OwxKnTsG+BU7EIhLOvxuUTsA7M87DMZKOwTWpzsEugY6+NArOvEq
+SjriN/Q6yKtWOtEYzzrgADA6wbMYOtIvizrM7t860R8IOrNC7jq31pY6yoApOq0xjTqeLU86mqq3
+OqiR4jqgLjc6ovcoOpfhrDqa75w6knF/Oo5mejqCgMo6YZV2OlbWQDqF+tw6d8lBOnMnjjpqg+A6
+f9EmOjr6wjpsBz86XbcAOm7XbjpuFaA6ezl3Om41MzpFpsk6XV91Ojy8sTo+rOU6Tpm5OkBkUzo+
+Nyk6XEp9OiHkRzoluxo6RE4SOhOirjohKtw6MtjeOgKp3ToQkhA6G3UpOhDv0jocjYg6A6uOOi7x
+8DoZnFg6F2SaOhJn1TothQs6GyF3OgomdToDfxw6B06nOfK7Vjn6dKk54b/gOehk1jnx1PE519SZ
+OdvEXjnm9Aw5/VX7OgHBRjnX2Do5ymPGOcvezjnuZxo53ki2Oca7mDmsEzM5wluuObxwcznFsrI5
+8kYFOdgrKznraUI5nkEROd4B4zm0ebk5qnnUObeJ3jmq5805sLA1OapmPjmn/Yk5mMLHObjPRjmM
+aFE5lroCOYPeWDmwcjI52xs4Oaq7sjmZXgI5kg8IOavAMjmcfOM5qNPzOaT8MzmiwEM5r6taOZyu
+vTmjAA85hktAOYh54DmAa3Q5ocVgOXkqmDmRyNE5qvgMOXYrIjmUFAI5cTs1OY5P0Dl4PJg5gxcq
+OaFL6TlHgDY5lJ5kOZHHJTlkZ505bm3YOWneQTlMXzc5hNNMOV1nZjlwwLI5UgmxOXg4oDlp5X45
+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
++fsXN6bCcjf5AYg4DcLiN8K1nw=="
+    .smoothing 0.5
+    .strobe-freq 4299
+    .strobe-power 233630.59209640152
+    .strobe-power-adjusted 509
+    .strobe-freq-band 201
   }
   @ ./voronoi-p2d video:gl:p2d {
     #%graph.x 1222
@@ -921,11 +1035,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
   ~ ./colour1!out ./voronoi-p2d!in-0
   ~ ./colour2!out ./voronoi-p2d!in-1
   ~ ./strobe!out ./voronoi-p2d!in-edges
-  ~ ./voronoi-p2d!out ./screen!in
   ~ ./strobe1!out ./voronoi-p2d!in-3
   ~ ./osc-receive!out ./osc-filter!in
   ~ ./colour2!out ./voronoi-p2d!in-2
   ~ ./osc-filter!move ./voronoi-p2d!move-cells
   ~ ./osc-filter!edges ./strobe!strobe
   ~ ./osc-filter!cell ./strobe1!strobe
+  ~ ./levels!out ./screen!in
 }
