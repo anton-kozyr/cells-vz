@@ -1,0 +1,19 @@
+<!DOCTYPE patchbay>
+<patchbay version="0.4.5" name="jack">
+ <output-sockets>
+  <socket client="system" name="system 1" type="jack-audio" exclusive="off">
+   <plug>capture_1</plug>
+   <plug>capture_2</plug>
+  </socket>
+ </output-sockets>
+ <input-sockets>
+  <socket client="PraxisLIVE-audio" name="PraxisLIVE-audio 1" type="jack-audio" exclusive="off">
+   <plug>Input_1</plug>
+  </socket>
+ </input-sockets>
+ <slots/>
+ <cables>
+  <cable input="PraxisLIVE-audio 1" output="system 1" type="jack-audio"/>
+ </cables>
+</patchbay>
+

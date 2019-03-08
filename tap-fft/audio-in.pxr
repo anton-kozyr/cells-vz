@@ -14,6 +14,7 @@
     .code "import org.jaudiolibs.pipes.Buffer;
 import org.jaudiolibs.pipes.impl.SingleInOut;
 import java.io.*;
+import org.jaudiolibs.pipes.Pipe;
 
 
     @In(1)
@@ -23,7 +24,8 @@ import java.io.*;
     @AuxOut(1)
     Output powerData;
     
-    @P(10) @Type.Integer(def = 32, suggested = \{4, 8, 16, 32, 64, 128\}) 
+    @P(10) @Type.Integer(def = 16, suggested = \{4, 8, 16, 32, 64\}) 
+    @OnChange(\"init\")
     int fftPerBlock;
     
     @P(100) @ReadOnly
@@ -40,8 +42,8 @@ import java.io.*;
     long yes = 0;
     
     @Override
-    public void setup() \{
-        fftSize = blockSize * 32;
+    public void init() \{
+        fftSize = blockSize * fftPerBlock;
         dataCopy = new float\[fftSize\]; // must be power of 2
         power = new float\[dataCopy.length / 2\];
         link(in, new FFT(), out);
@@ -63,6 +65,7 @@ import java.io.*;
 
         @Override
         protected void process(Buffer buffer, boolean bln) \{
+            try \{
             arrayCopy(buffer.getData(), 0, dataCopy, writeIdx, blockSize);
             writeIdx += blockSize;
             if (writeIdx >= dataCopy.length) \{
@@ -74,6 +77,9 @@ import java.io.*;
                 \}
                 writeIdx = 0;
                 send = true;
+            \}
+            \} catch (ArrayIndexOutOfBoundsException e) \{
+                writeIdx = 0;
             \}
         \}
 
@@ -211,7 +217,7 @@ import java.io.*;
   @ ./send-1 core:routing:send {
     #%graph.x 790
     #%graph.y 279
-    .address /video-out/levels.fft-in
+    .address /eq/eq.fft-in
   }
   @ ./input-1 audio:input {
     #%graph.x 307
