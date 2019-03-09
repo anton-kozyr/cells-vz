@@ -3,13 +3,12 @@
   #%praxis.version 4.1.1
   .renderer OpenGL
   .width 960
-  .height 500
+  .height 400
   .fps 60.0
   @ ./screen video:output {
     #%graph.x 209
     #%graph.y -39
     .always-on-top true
-    .show-cursor true
   }
   @ ./eq video:gl:p2d {
     #%graph.x 68
@@ -20,13 +19,14 @@
     @P(1) @OnChange(\"processFFT\") float\[\] fftIn;
     @P(2) @Type.Number(def=0.2, min=0, max=1) double smoothing;
     
-    @P(5) @Type.Number(def=0.4, min=0.0, max=2, skew=2) double recoil0;
-    @P(6) @Type.Number(def=0.4, min=0.0, max=2, skew=2) double recoil1;
-    @P(7) @Type.Number(def=0.4, min=0.0, max=2, skew=2) double recoil2;
+    @P(5) @Type.Number(def=0.4, min=0.0, max=2, skew=2) Property recoil0;
+    @P(6) @Type.Number(def=0.4, min=0.0, max=2, skew=2) Property recoil1;
+    @P(7) @Type.Number(def=0.4, min=0.0, max=2, skew=2) Property recoil2;
     
     float\[\] fft;
     int maxFFT;
     final int MAX_FREQ = 10910;
+    double barWidth;
     
     private final static int PINGS_COUNT = 3;
     @P(13) @ReadOnly int\[\] pingBands; // Frequency bands
@@ -42,19 +42,24 @@
     @Inject Property led1;
     @Inject Property led2;
     
+    // TODO: ping coverage (grab 1, 2 or three bands)
+    
     Output\[\] pings;
     Property\[\] leds;
+    Property\[\] recoils;
     
     
     @Override
     public void setup() \{
-        if(null==pingBands || pingBands.length < 4) \{
-            reset();
-        \}
+//        if(null==pingBands || pingBands.length < 4) \{
+//            reset();
+//        \}
         pings = new Output\[\] \{ ping0, ping1, ping2 \};
         leds = new Property\[\] \{ led0, led1, led2 \};
+        recoils = new Property\[\] \{ recoil0, recoil1, recoil2 \};
         rectMode(CORNERS);
         ellipseMode(CENTER);
+        strokeWeight(1);
     \}
     
     @T(0) void reset() \{
@@ -80,7 +85,7 @@
                 newFFT\[i\] = fft\[i\]*s + fftIn\[i\]*(1-s);
             \}
         \} catch (ArrayIndexOutOfBoundsException e) \{
-            
+            log(WARNING, \"Something weird in processFFT()  - try reset button\");
         \} finally \{
             fft = newFFT;
         \}
@@ -90,76 +95,135 @@
     @Override
     public void draw() \{
         if(null == fft || fft.length == 0 || 0 == maxFFT) \{
-            log(WARNING, \"No signal\");
+            log(WARNING, \"No signal yet received - ignore if doesn't repeat\");
             return;
         \}
-        strokeWeight(1);
         fill(255);
         stroke(255);
         boolean mouseHit = false;
-        int eqWidth = width - 400;
-        double bar = (width - 100)/(maxFFT);
+        int eqWidth = width;
+        barWidth = (eqWidth)/(maxFFT);
         for(int i = 0; i<maxFFT; ++i) \{
             float amp = fft\[i\];
             double displayAmp = adjustPower(amp);
-            double left = bar*i;
-            double right = bar*i+bar;
+            double left = barWidth*i;
+            double right = barWidth*i + barWidth;
             rect(left+1, height, right-1, height-displayAmp);
             if(left <= mouseX && right >= mouseX && displayAmp > height - mouseY) \{
                 mouseHit = true;
             \}
-            if(amp >= pingPowers\[0\] && i == pingBands\[0\] && !leds\[0\].isAnimating()) \{
-                leds\[0\].set(255).to(0).in(recoil0).easing(Easing.cubicIn);
-                pings\[0\].send();
-            \}
+            checkPings(amp, i);  // should go to processFFT
         \}
-        if(leds\[0\].isAnimating()) \{
-            noStroke();
-            fill(255, 0 , 0, i(leds\[0\]));
-            ellipse(pingBands\[0\] * bar, height-pingAdjusts\[0\], 100, 100);
-            text(String.format(\"=%d=\", 0), pingBands\[0\] * bar - 15, height-pingAdjusts\[0\]-i(leds\[0\]));
-        \} else \{
-            noFill();
-            stroke(255, 0, 0);
-            ellipse(pingBands\[0\] * bar, height-pingAdjusts\[0\], 10, 10);
-        \}
+        
+        drawPings();
+        
         fill(255);
-        printFreqPowerInfo(width - 300, height - 300, pingBands\[0\], pingFreqs\[0\], pingPowers\[0\], pingAdjusts\[0\]);
+        text(String.format(\"FFT Bands: %d\", maxFFT), width - 130, height - 20);
         
-        
-        text(String.format(\"FFT Bands: %d\", maxFFT), width - 100, height - 20);
-        text(\"Q RED 0\\nA GREEN 1\\nZ BLUE 2\", width - 100, height - 120);
-        
-        strokeWeight(0.5);
         stroke(mouseHit ? 255 : 0, mouseHit ? 0 : 255, 0);
         fill(mouseHit ? 255 : 0, mouseHit ? 0 : 255, 0);
         if (pmouseX < eqWidth) \{
             line(pmouseX, 0, pmouseX, height);
             line(0, pmouseY, eqWidth, pmouseY);
-            int freqBand = (int) (pmouseX / bar);
+            int freqBand = (int) (pmouseX / barWidth);
             int freq = (int) (MAX_FREQ * (double)pmouseX / eqWidth);
             int adjustedPowerMouse = height-pmouseY;
             double powerMouse = deAdjustPower(adjustedPowerMouse);
             
-            printFreqPowerInfo(pmouseX, pmouseY, freqBand, freq, powerMouse, adjustedPowerMouse);
-            if(keyPressed && (key == 'q' || key == 'Q')) \{
-                text(String.format(\"Ping-%d\", 0), pmouseX-50, pmouseY-5);
-                if (mousePressed) \{
-                    pingBands\[0\] = freqBand;
-                    pingFreqs\[0\] = freq;
-                    pingPowers\[0\] = powerMouse;
-                    pingAdjusts\[0\] = adjustedPowerMouse;
+            printFreqPowerInfo(pmouseX, pmouseY, 
+                    freqBand, freq, powerMouse, adjustedPowerMouse, null);
+            
+            // update pingsw
+            if(keyPressed) \{
+                int pingNo = -1;
+                if (key == 'q' || key == 'Q') \{
+                    pingNo = 0;
+                \} else if (key == 'w' || key == 'W') \{
+                    pingNo = 1;
+                \} else if (key == 'e' || key == 'E') \{
+                    pingNo = 2;
+                \} 
+                    
+                if(pingNo > -1) \{
+                    text(String.format(\"Ping-%d\",pingNo), pmouseX-50, pmouseY-5);
+                    if (mousePressed) \{
+                        pingBands\[pingNo\] = freqBand;
+                        pingFreqs\[pingNo\] = freq;
+                        pingPowers\[pingNo\] = powerMouse;
+                        pingAdjusts\[pingNo\] = adjustedPowerMouse;
+                    \}
                 \}
             \}
         \}
+        
+        noFill();
+        stroke(0, 30, 0);
+        rect(0, 0, width-1, height-1);
     \}
     
-    void printFreqPowerInfo(int leftX, int bottomY, int freqBand, int freq, double power, int adjustedPower) \{
+    void checkPings(double power, int band) \{
+        try \{
+            for (int i=0; i<PINGS_COUNT; ++i) \{
+                if(power >= pingPowers\[i\] && band == pingBands\[i\] && !leds\[i\].isAnimating()) \{
+                    leds\[i\].set(255).to(0).in(d(recoils\[i\])).easing(Easing.cubicIn);
+                    pings\[i\].send();
+                \}
+            \}
+        \} catch(ArrayIndexOutOfBoundsException e) \{
+            log(WARNING, \"Something weird in checkPings()  - try reset button\");
+        \}
+    \}
+    
+    void drawPings() \{
         noStroke();
-        text(String.format(\"Band:  %d\", freqBand), leftX + 5, bottomY - 44);
-        text(String.format(\"Frequency:  ~%dHz\", freq), leftX + 5, bottomY - 31);
-        text(String.format(\"Adjusted power:  %.0f\", power), leftX + 5, bottomY - 18);
-        text(String.format(\"Raw power:  %dcans\", adjustedPower), leftX + 5, bottomY - 5);
+        for(int i=0; i<PINGS_COUNT; ++i) \{
+            String label;
+            String colorName;
+            if(i==0) \{
+                fill(255, 0 , 0, 100);
+                label = \"Q\";
+                colorName = \"Red\";
+            \} else if(i==1) \{
+                fill(255, 255 , 0, 100);
+                label = \"W\";
+                colorName = \"Yellow\";
+            \} else \{
+                fill(0, 255, 255, 100);
+                label = \"E\";
+                colorName = \"Cyan\";
+            \}
+            if(leds\[i\].isAnimating()) \{
+                ellipse(pingBands\[i\] * barWidth, height-pingAdjusts\[i\], 100, 100);
+                text(String.format(\"=%s=\", label), 
+                        pingBands\[i\] * barWidth - 15, 
+                        height-pingAdjusts\[i\]-i(leds\[i\]));
+            \} else \{
+                if(i==0) \{
+                    fill(255, 0 , 0);
+                \} else if(i==1) \{
+                    fill(255, 255 , 0);
+                \} else \{
+                    fill(0, 255, 255);
+                \}
+                ellipse(pingBands\[i\] * barWidth, height-pingAdjusts\[i\], 7, 7);
+            \}
+            printFreqPowerInfo(20 + i*200, height - 320, 
+                    pingBands\[i\], pingFreqs\[i\], pingPowers\[i\], pingAdjusts\[i\], 
+                    String.format(\"%d %s %s\", i, label, colorName));
+        \}
+    \}
+    
+    void printFreqPowerInfo(int leftX, int bottomY, int freqBand, int freq, double power, int adjustedPower, String label) \{
+        noStroke();
+        if(label != null) \{
+            text(label, leftX + 5, bottomY - 57);
+        \}
+        if(freqBand < Integer.MAX_VALUE) \{
+            text(String.format(\"Band:  %d\", freqBand), leftX + 5, bottomY - 44);
+            text(String.format(\"Frequency:  ~%dHz\", freq), leftX + 5, bottomY - 31);
+            text(String.format(\"Adjusted power:  %.0f\", power), leftX + 5, bottomY - 18);
+            text(String.format(\"Raw power:  %dcans\", adjustedPower), leftX + 5, bottomY - 5);
+        \}
     \}
     
     double adjustPower(double power) \{
@@ -171,61 +235,63 @@
     \}
     
 "
-    .fft-in "rO0ABXVyAAJbRgucgYki4AxCAgAAeHAAAAIAQSsSGkJKu39DF2HpQuCSAEFqCYlAfX2MQg2JE0Fa
-UxBBDKINP0m36D6YMkI/lVlfP4wVwz9POjs91PMRPfGufz1Gf1Q9q+UWPbALIz3D1+Q9PERQPeLs
-KT2VFCU8qrakPWVvQz2+YLE922+TPcZseTsM6U49jbo6PBx9zz0dl9k798HSPQKd+TxVXDw9x27D
-PKuenz2G2jI9zrk9PBukqzzruRI9D+IuPBHfzz2F45Q8EEHdPSiL5zrd0YU709+vPK+rAjpmHYY8
-BKyRPQ3aTT2kEd09IpymPht3ADuIGgo8TtD6OruF2DyHCB08oFEvPTuIBTvm/dc9Vv9sPQSztD0x
-lJE9CIknPMQ1YD1UQh48nxdqO+tHYD0L74o9DRZOPaCrYTzk5Ds8Ni9OPUbErDsF/Xw8QFrHO1H8
-OjuHGew7rde2PPhiEjqcaLM8r1OzO/utYjuK1uI8niqFO8NzDTyiuig7CijKPDT2+DyWvcQ755r6
-PCa5FzsyBRs7uOxqO4AqazwOzc09BzzaO78N6zkI3MQ8J2h4O2vIcjvPjJ48WuESPEQ/aDwsPXo7
-rkeFO/KEhTr73CY55D+SPIOCYDt0VUQ8MGGNPJ4qXT194087obPxPAc75jxAc7Q9FDc7PBJS7DwF
-aI05tNHsPI782zrM9Ko6iuRKOzqJjzqZ0iw9XK6WPHqukTtnJWM8CE8EPClQ1D0AvxI8Vl6lPORL
-ojygAOk9uVG4PP4IHz2DlkI9FL03PjMs6j1qwbw8mMkHPecouD0YX289EcUuPb2RDTvhky08puJI
-PJ1khzvXr248D90aPOMkMD1Tny09mlRbPP7+pj2/gt09HfdiPbInVj5kc/g935CZPSnnTD2ZKWE9
-/hROPJp8RD04IDw9yGrNPRMzFT0+T688+nUBPa2xKj4NuuA9edGBPXLwdD1087A9rV7vPT/1iD4n
-RvI9D8JIPUMq0j1aHww9FbX3PeUd/T0MW1Q7TzoxPgfd7j4UyFw9NqE6PMmfbzyVT0E9TtFMPEZE
-bDyvMug8GAoVPIwXgz0vJ6E91ptlPRKRXD3pzf09/e6nPN/ZDD5Yyno9DQQgPWetkD2lmA49TqxD
-PbpB4T4b1Io+BhM4Pf+1dj3HbUA9I4ohPecJhjyzUC49P7YnPjjdJD1uKAo+LnMtPqHIjTxPPkE9
-u62oPcGsLD2riVA8ed3kPdUzbD4PhCo+iygMPSDmLz2woD8+hHt+PTT+jj4GAo49iNmzPikbkz4+
-UjE+Ynb1PhmpuTy4qHQ9g/fOPai/OD12qsg9g2ifPBicyDzCwxk9TeO2PfZfUj17Ejo9wspaPK2c
-tT3tM2o9Y7zqPlAJxj3wkms9c2QaPiAFVz6elUM9oHpcPgm/qjz6LN4+eTJ0PpXe/j4zm8Y+jIXN
-PgotYD4S0KU9tNLDPXjIiD2PqAk+TBiZPhJFFj6P7P0+jABVPPwoeT6U7/Y+47RCPiydRz7K+pQ+
-nEUwPw7+3j7JKJI+ZPY7PmNzIT4jz5E+cFLkPmbGlj4rBwo+iyPmPjQ4Sz4BPwk9X8vsPcsg7j57
-bKQ869vdPMB0gj0iq3g7llQ3O1EZgTukWJ87FbY4PB60CD1ii3s9ZDWoPSEXXD2IDj49pGYxPfkk
-GD4V26o+OuCsPjoatT5xLmE+eW27PouCHz56zAo+opYmPq1/BT6lhOU+vIw5PrX2Hj6TTb4+xWcI
-Psmwdj7FbQs+xjbhPskchz7G8zQ+y1BSPsPl8j7BEMQ+xVqiPrbGTD69mOQ+wr5GPqAEpD6or5M+
-pCpxPpp7vz6YGKs+hCqgPoIwXD5om2M+RWwKPjT49D4mG4s+CrU0Pf6hRj3A+jQ9srk0PXztMj1o
-8S49LiqAPPwq+Dz+wLE8lClXPII+wDwPvFA7i56IPBDr3jujy4s7Vri6Oq7xlztYLwY6gqwROxqw
-gDqaiTU6pXFhOpSKuDnanv47BsILO4UjYju0l/A76s6qPAT5yjyGCGw8lMMxPD8GnTzfPyo88M+c
-PQIcRT0cOLQ9SvRdPUsyXT1r7rM9jR1MPYNe9T18W7w9j5e6PaBvLT3De7g9mQVJPYUmjz2KTc49
-k8bEPa8NvD18mkQ9TJwIPVMeTj1hlN49DhoFPQDFmTzqQVg850JFPIfdQDyhFsE8Zr6DO/R+9jwm
-R6s7fx24PBMpJzwug9071OQaPC6wSDyBEms8GhlGPELyoDyWTy88jOo/PC6sUDxfVSQ8JSdnPIZG
-KzyEvUs8dDnxPGxzsDu+8O08FZxwPEvCFzuVd9I7KCTpOzMn5jsVhlM6xiEeOq6mFTqdb7k5Sgqk
-O4kssjqPvQ87L/osOPsQEjsawbA61/bUO3D+ujsYc0w6ronTOwirYju5D2c7hdz6O+tnQjv31Ig8
-ez/qPDq7Ejx1Uww8Y1wGPG9Tej0ncOk86Mn0PND5Oz0pZR89AwxaPOgLqz0F1EQ9L39OPQvO3jzx
-U449HnvEPR/d3DzCipk9Fa1hPRyzXj0ZnCw9MZc+PQXX2z0Kf989I1P9PS3dOz0PjQk9E+AUPNYJ
-jTyNRHA8mDdRPJZv9DxVqPQ8Z9TMPEL9QDwPacc8D1msOndtRzw8hE476dXFObwHejpBwKQ7E1Ks
-OpkQpDqfDTk61UPGOn/AszuqivA7Z6VOOm4IlTtY3bY5/k5eOrjdgDsOxGA6pUZqOjWsyjqElCo7
-zxD8OhT69Tqmyc47KIqpOqRr9zgHeUA="
+    .fft-in "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
+R4z+O0NdKjovQuE6YliAOwP7mjvs0Zc="
     .smoothing 0.5
     .recoil-0 0.7648891966759004
   }
   @ ./ping-0 core:routing:send {
-    #%graph.x 209
-    #%graph.y 36
+    #%graph.x 376
+    #%graph.y 11
     .address /eq-target/eq-beats.in-0
   }
   @ ./ping-1 core:routing:send {
-    #%graph.x 209
-    #%graph.y 86
+    #%graph.x 376
+    #%graph.y 73
     .address /eq-target/eq-beats.in-1
   }
   @ ./ping-2 core:routing:send {
-    #%graph.x 209
-    #%graph.y 136
+    #%graph.x 376
+    #%graph.y 133
     .address /eq-target/eq-beats.in-2
   }
   ~ ./eq!out ./screen!in
   ~ ./eq!ping-0 ./ping-0!in
+  ~ ./eq!ping-1 ./ping-1!in
+  ~ ./eq!ping-2 ./ping-2!in
 }

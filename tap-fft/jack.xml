@@ -1,5 +1,5 @@
 <!DOCTYPE patchbay>
-<patchbay version="0.4.5" name="jack">
+<patchbay name="jack" version="0.4.5">
  <output-sockets>
   <socket client="system" name="system 1" type="jack-audio" exclusive="off">
    <plug>capture_1</plug>
@@ -13,7 +13,7 @@
  </input-sockets>
  <slots/>
  <cables>
-  <cable input="PraxisLIVE-audio 1" output="system 1" type="jack-audio"/>
+  <cable type="jack-audio" input="PraxisLIVE-audio 1" output="system 1"/>
  </cables>
 </patchbay>
 

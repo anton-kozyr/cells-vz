@@ -1,15 +1,16 @@
 @ /audio root:audio {
   #%autostart true
   #%praxis.version 4.1.1
+  #%graph.comment The best as of 9 March fft usage example
   .sample-rate 44100
   .library JACK
   @ ./output1 audio:output {
-    #%graph.x 1182
-    #%graph.y 95
+    #%graph.x 1012
+    #%graph.y 45
     .channels 1
   }
   @ ./fft audio:custom {
-    #%graph.x 678
+    #%graph.x 604
     #%graph.y 45
     .code "import org.jaudiolibs.pipes.Buffer;
 import org.jaudiolibs.pipes.impl.SingleInOut;
@@ -208,31 +209,18 @@ import org.jaudiolibs.pipes.Pipe;
 
 "
   }
-  @ ./player-1 audio:player {
-    #%graph.x 307
-    #%graph.y 145
-    .sample [file "resources/sample.wav"]
-    .start 0.1111111111111111
-    .end 0.6031746031746031
-    .loop true
-  }
   @ ./send-1 core:routing:send {
-    #%graph.x 790
-    #%graph.y 279
+    #%graph.x 796
+    #%graph.y 305
     .address /eq/eq.fft-in
   }
   @ ./input-1 audio:input {
-    #%graph.x 307
+    #%graph.x 368
     #%graph.y 45
     .channels 1
   }
-  @ ./gain-1 audio:gain {
-    #%graph.x 873
-    #%graph.y 70
-    .level 3.9331966835736364E-4
-  }
-  @ ./osc-1 audio:osc {
-    #%graph.x 479
+  @ ./osc-for-testing-eq audio:osc {
+    #%graph.x 307
     #%graph.y 145
     .code "
 
@@ -262,8 +250,35 @@ import org.jaudiolibs.pipes.Pipe;
     .frequency 10910
     .level 0.5754509101579716
   }
+  @ ./muter audio:gain {
+    #%graph.x 796
+    #%graph.y 45
+    .code "
+
+    @In(1) AudioIn in;
+    @Out(1) AudioOut out;
+    
+    @UGen Gain gain;
+    
+    @P(1) @Type.Number(min=0, max=2, skew=4)
+            Property level;
+    
+    @T(0) void safeMute() \{
+        level.set(0.0001);
+    \}
+    
+    @Override
+    public void init() \{
+        level.set(0.0001);
+        level.link(gain::level);
+        link(in, gain, out);
+    \}
+    
+"
+    .level 1.0E-4
+  }
   ~ ./fft!power-data ./send-1!in
-  ~ ./fft!out ./gain-1!in
-  ~ ./gain-1!out ./output1!in-1
   ~ ./input-1!out-1 ./fft!in
+  ~ ./fft!out ./muter!in
+  ~ ./muter!out ./output1!in-1
 }

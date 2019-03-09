@@ -1,5 +1,6 @@
 @ /data-tidal root:data {
   #%praxis.version 4.1.1
+  #%graph.comment Check tap-fft/video-out it doesn't work, but there is an example of OSC
   @ ./osc-receive core:custom {
     #%graph.x 100
     #%graph.y 242
@@ -69,8 +70,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 "
   }
   @ ./osc-filter core:custom {
-    #%graph.x 299
-    #%graph.y 242
+    #%graph.x 361
+    #%graph.y 292
     .code "
 
     @P(1) @ReadOnly Value address;

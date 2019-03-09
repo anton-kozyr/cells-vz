@@ -14,7 +14,7 @@
     .show-cursor true
   }
   @ ./voronoi-p2d video:gl:p2d {
-    #%graph.x 981
+    #%graph.x 980
     #%graph.y 89
     .code "import org.kynosarges.tektosyne.geometry.*;
 import java.util.concurrent.CopyOnWriteArrayList;
