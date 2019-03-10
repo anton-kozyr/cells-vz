@@ -1,0 +1,7 @@
+add-libs [file-list "config/libs/*.jar"]
+
+# <<<BUILD>>>
+include [file "main-out.pxr"]
+
+# <<<RUN>>>
+include [file "config/main-out_autostart"]
