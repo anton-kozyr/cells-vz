@@ -16,7 +16,7 @@
     #%graph.x 42
     #%graph.y 329
     .video [file "resources/horse.mp4"]
-    .position 0.24041460299171363
+    .position 0.7481869586273241
     .resize-mode Scale
   }
   @ ./timer-1 core:timing:timer {
@@ -104,8 +104,8 @@ void main() \{
     float white = x * y * 3.5;
     gl_FragColor = vec4(white, white, white, 1.0 );
 \}"
-    .x 0.745
-    .y 0.995
+    .x 0.9775
+    .y 1.0
     .mouse-input true
   }
   @ ./solarize video:gl:p2d {
@@ -775,9 +775,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 "
     .movements All
     .time-to-move 0.8
-    .cells-count 11
+    .cells-count 18
+    .cells-inputs 7
     .edge-width 8
     .draw-cells true
+    .just-colours false
   }
   @ ./main-control core:custom {
     #%graph.x 686

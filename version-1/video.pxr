@@ -362,13 +362,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
         \}
     \}
 "
-    .movements All
-    .movement-speed 10
-    .time-to-move .4
-    .cells-count 40
+    .movement-speed 3.975462306971262
+    .time-to-move 0.2
+    .cells-count 35
     .cells-inputs 7
     .inputs-to-cells "Cycle inputs over cells"
-    .edge-width 6
+    .edge-width 8
     .draw-cells true
     .just-colours false
   }
@@ -482,6 +481,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-3 video:gl:p2d {
       #%graph.x 435
@@ -589,6 +589,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-4 video:gl:p2d {
       #%graph.x 573
@@ -696,6 +697,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-5 video:gl:p2d {
       #%graph.x 711
@@ -803,6 +805,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-6 video:gl:p2d {
       #%graph.x 849
@@ -910,6 +913,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-2 video:gl:p2d {
       #%graph.x 297
@@ -1017,6 +1021,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-0 video:gl:p2d {
       #%graph.x 21
@@ -1124,6 +1129,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./colour-7 video:gl:p2d {
       #%graph.x 987
@@ -1225,6 +1231,7 @@ void main() \{
 void main() \{
     gl_FragColor = vec4( colour.x/255, colour.y/255, colour.z/255, 1.0 );
 \}"
+      .on false
     }
     @ ./out-0 video:container:out {
       #%graph.x 1180
@@ -2236,6 +2243,7 @@ void main() \{
     .rgb-5 "#769f85"
     .rgb-6 "#ff6530"
     .rgb-7 000000
+    .on false
   }
   @ ./timer-1 core:timing:timer {
     #%graph.x -609
@@ -2656,7 +2664,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-1 video:custom {
       #%graph.x 583
@@ -2679,7 +2686,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-2 video:custom {
       #%graph.x 583
@@ -2702,7 +2708,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-3 video:custom {
       #%graph.x 583
@@ -2725,7 +2730,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-4 video:custom {
       #%graph.x 583
@@ -2748,7 +2752,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-5 video:custom {
       #%graph.x 583
@@ -2771,7 +2774,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-6 video:custom {
       #%graph.x 583
@@ -2794,7 +2796,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch core:container:in {
       #%graph.x 146
@@ -2858,7 +2859,6 @@ void main() \{
         notOut.send(!on.getBoolean());
     \}
 "
-    .on false
   }
   @ ./video-splitter-2 core:container {
     #%graph.x 171
@@ -2917,7 +2917,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-1 video:custom {
       #%graph.x 583
@@ -2940,7 +2939,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-2 video:custom {
       #%graph.x 583
@@ -2963,7 +2961,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-3 video:custom {
       #%graph.x 583
@@ -2986,7 +2983,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-4 video:custom {
       #%graph.x 583
@@ -3009,7 +3005,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-5 video:custom {
       #%graph.x 583
@@ -3032,7 +3027,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch-6 video:custom {
       #%graph.x 583
@@ -3055,7 +3049,6 @@ void main() \{
     \}
     
 "
-      .on false
     }
     @ ./switch core:container:in {
       #%graph.x 146
@@ -3102,10 +3095,9 @@ void main() \{
     \}
     
 "
-    .on false
   }
   @ ./white video:gl:p2d {
-    #%graph.x 515
+    #%graph.x 516
     #%graph.y 264
     .code "import java.awt.Color;
 
@@ -3181,7 +3173,7 @@ void main() \{
         trig.send(1.0);
     \}
 "
-    .period 0.47664851960000004
+    .period 0.2277712018
     .playing true
   }
   @ ./tapdiv core:custom {
@@ -3257,17 +3249,15 @@ void main() \{
   ~ ./colour-control!out-5 ./colours!in-5
   ~ ./colour-control!out-6 ./colours!in-6
   ~ ./colour-control!out-7 ./colours!in-7
-  ~ ./colours!out-3 ./voronoi-p2d!in-3
-  ~ ./colours!out-4 ./voronoi-p2d!in-4
   ~ ./colours!out-5 ./voronoi-p2d!in-5
-  ~ ./colours!out-6 ./voronoi-p2d!in-6
-  ~ ./trigger-splitter!out-each ./lines!animate
   ~ ./trigger-splitter!out-2-of-2 ./squares!shuffle
   ~ ./taptempo!unit ./tapdiv!unitin
-  ~ ./trigger-splitter!out-each ./strobe-control!strobe-0
-  ~ ./trigger-splitter!out-1-of-2 ./voronoi-p2d!move-cells
-  ~ ./trigger-splitter!out-2-of-2 ./strobe-control!strobe-1
   ~ ./colours!out-2 ./voronoi-p2d!in-2
   ~ ./colours!out-1 ./voronoi-p2d!in-1
   ~ ./colours!out-0 ./voronoi-p2d!in-0
+  ~ ./trigger-splitter!out-2-of-4 ./strobe-control!strobe-3
+  ~ ./trigger-splitter!out-1-of-8 ./strobe-control!strobe-0
+  ~ ./lines!out ./voronoi-p2d!in-edges
+  ~ ./trigger-splitter!out-3-of-4 ./lines!animate
+  ~ ./trigger-splitter!out-1-of-2 ./voronoi-p2d!move-cells
 }

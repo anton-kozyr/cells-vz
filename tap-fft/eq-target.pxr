@@ -289,16 +289,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
     \}
     
     boolean cellPositionOk(double nx, double ny) \{
-//        double cx = width/2;
-//        double cy = height/2;
-//        double r = height/2;
-//        
-//        double dx = abs(cx-nx);
-//        double dy = abs(cy-ny);
-//        double d = pow(dx*dx+dy*dy, 0.5);
-//        
-//        return d>=r;
-        return nx < 0 || nx > width || ny < 0 || ny > height;
+        double cx = width/2;
+        double cy = height/2;
+        double r = height/2;
+        
+        double dx = abs(cx-nx);
+        double dy = abs(cy-ny);
+        double d = pow(dx*dx+dy*dy, 0.5);
+        
+        return d>=r;
+//        return nx < 0 || nx > width || ny < 0 || ny > height;
     \}
     
     // Cell count manipulation
@@ -379,7 +379,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
         \}
     \}
 "
-    .movements All
     .movement-speed 100.0
     .time-to-move 0.4
     .cells-count 40
@@ -387,7 +386,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
     .inputs-to-cells "Cycle inputs over cells"
     .edge-width 4
     .draw-cells true
-    .just-colours false
   }
   @ ./strobes core:container {
     #%graph.x 1167
