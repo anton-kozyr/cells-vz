@@ -18,210 +18,244 @@
     .period 2.9843756906077346
   }
   @ ./voronoi-renderer video:gl:p2d {
-    #%graph.x 550
-    #%graph.y 68
-    .code "import org.kynosarges.tektosyne.geometry.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-
+    #%graph.x 639
+    #%graph.y 1
+    .code "import org.locationtech.jts.geom.*;
+import java.io.DataInputStream;
+import java.io.IOException;
 
     static final int MAX_CELLS_COUNT = 40;
     static final double EDGE_THRESHOLD = 0.1;
-
-    static final String RANDOMLY = \"Randomly\";
     static final String LAST_INPUT = \"Input per cell, last to the rest\";
     static final String CYCLE = \"Cycle inputs over cells\";
+    
+    @In(0) PImage in0; @In(1) PImage in1; @In(2) PImage in2; @In(3) PImage in3;
+    @In(4) PImage in4; @In(5) PImage in5; @In(6) PImage in6;
+    @In(7) PImage inEdges;
+    
+    @P(11) @Type.Integer(def = 6, min = 1, max = 7) int cellsInputs;
+    @P(12) @Type.String(allowed = \{CYCLE, LAST_INPUT\}) String inputsToCells;
+    @P(15) @Type.Number(def = 3, min = 0, max = 1000, skew=4) @OnChange(\"updateEdges\") double edgeWidth;
+    @P(17) @Type.Boolean(def = false) boolean drawCells;
+    @P(18) @Type.Boolean(def = false) boolean drawCenters;
+    @P(19) @Type.Boolean(def = true) boolean justColours;
 
     @AuxIn(100) Data.In<Map<String, Object>> voronoiData;
     @Inject Data.Sink<Map<String, Object>> voronoiSink;
-    
-    @In(0) PImage in0;
-    @In(1) PImage in1;
-    @In(2) PImage in2;
-    @In(3) PImage in3;
-    @In(4) PImage in4;
-    @In(5) PImage in5;
-    @In(6) PImage in6;
-    @In(7) PImage inEdges;
-   
-    @OffScreen(persistent = false) PGraphics2D outEdges;
-    
-    @P(11) @Type.Integer(def = 6, min = 1, max = 7) @OnChange(\"updateCellsInputs\") int cellsInputs;
-    @P(12) @Type.String(allowed = \{RANDOMLY, CYCLE, LAST_INPUT\}) @OnChange(\"updateCellsInputs\") String inputsToCells;
-    
-    @P(15) @Type.Number(def = 3, min = 0, max = 1000, skew=4) double edgeWidth;
-    
-    @P(17) @Type.Boolean(def = false) boolean drawCells;
 
-    @P(18) @Type.Boolean(def = false) boolean drawCenters;
-    
-    @P(19) @Type.Boolean(def = true) boolean justColours;
-    
+    @OffScreen(persistent = false) PGraphics2D outEdges;
     @Inject Ref<List<PVector>> coloursRef;
     
     List<Cell> cells = new ArrayList<>();
+    GeometryFactory geometryFactory = new GeometryFactory();
     
-    // Coordinates of cell edges
-    double\[\]\[\] edges;
+    @P(200) @OnChange(\"receive\") PBytes voronoiFarData;
+    
+    @P(300) @ReadOnly String receivingSource;
+        
+    void receive() \{
+        DataInputStream dis = new DataInputStream(voronoiFarData.asInputStream());
+        try \{
+            int cellsCount = dis.readInt();
+            List<PVector> centres = new ArrayList<>();
+            List<List<PVector>> polygons = new ArrayList<>();
+            for (int i=0; i<cellsCount; ++i) \{
+                centres.add(new PVector(dis.readDouble(), dis.readDouble()));
+                int verticesCount = dis.readInt();
+                List<PVector> polygon = new ArrayList<>();
+                for (int j=0; j<verticesCount; ++j) \{
+                    polygon.add(new PVector(dis.readDouble(), dis.readDouble()));
+                \}
+                polygons.add(polygon);
+            \}
+            dis.close();
+            
+            cells = geometryToCells(centres, polygons);
+        \} catch (IOException ex) \{
+            log(ERROR, \"WTF\");
+        \}
+    \};
+    
     
     // Initialisation
 
     @Override public void setup() \{
-        initRefs();
-        updateCellsInputs();
         Data.link(voronoiData, voronoiSink.input());
-    \}
-    
-    void initRefs() \{ 
         coloursRef.init(ArrayList::new);
         coloursRef.apply(list -> \{
             while(list.size() < MAX_CELLS_COUNT) \{
                 list.add(new PVector(random(255), random(255), random(255)));
             \}
         \});
+        noStroke();
     \}
-    
-    void updateCellsInputs() \{
-        PImage\[\] ins = \{ in0, in1, in2, in3, in4, in5, in6 \};
-        List<Cell> newCells = new ArrayList<>();
-        Random r = new Random();
-        for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
-            int inNo;
-            if(LAST_INPUT.equals(inputsToCells)) \{
-                inNo = min(i, cellsInputs-1);
-            \} else if (CYCLE.equals(inputsToCells)) \{
-                inNo = i % cellsInputs;
-            \} else \{ // if RANDOM
-                inNo = r.nextInt(cellsInputs);
-            \}
-            Cell cell = new Cell(i, ins\[inNo\], coloursRef.get().get(i));
-            newCells.add(cell);
-        \}
-        cells = newCells;
-    \}
-
     
     
     // Drawing
     
     @Override public void draw() \{
         receiveCellGeometry();
-            
+        if(edgeWidth > EDGE_THRESHOLD) \{
+            drawEdges();
+        \}
         if(drawCells) \{
             drawCells();
         \}
-        drawEdges();
         if(drawCenters) \{
             drawCenters();
         \}
     \}
-
-    void receiveCellGeometry() \{
-        //TODO: validation
-        //TODO: clone/update of cells list
-        Map<String,Object> v = voronoiSink.process(Collections.emptyMap());
-        if(!v.isEmpty() && v.containsKey(\"edges\") && v.containsKey(\"vertices\") && v.containsKey(\"centres\")) \{
-            this.edges = (double\[\]\[\]) v.get(\"edges\");
-            List<PVector> centres = (List<PVector>) v.get(\"centres\");
-            for(int i=0; i<centres.size(); ++i) \{
-                cells.get(i).centre = centres.get(i);
-            \}
-            List<List<PVector>> vertices = (List<List<PVector>>) v.get(\"vertices\");
-            for(int i=0; i<vertices.size(); ++i) \{
-                cells.get(i).vertices = removeEdges(vertices.get(i));
-            \}
-        \}
-    \}
-    
-    List<PVector> removeEdges(List<PVector> vertices) \{
-//        for(int i=0; i<vertices.size()/2; ++i) \{
-//            
-//        \}
-        return vertices;
-    \}
-    
-    
     
     void drawCells() \{
-        // Filtering on valid unnecessary
-        cells.stream().filter(Cell::valid).forEach(cell -> \{
+        cells.forEach(cell -> \{
             blendMode(BLEND);
             beginShape();
             if (justColours) \{
-                PVector c = cell.colour;
+                PVector c = cell.colour();
                 fill(c.x, c.y, c.z);
             \} else \{
-                texture(cell.in);
+                texture(cell.in());
             \}
-            strokeWeight(edgeWidth);
-            stroke(0);
             cell.vertices.forEach(v -> vertex(v.x, v.y, v.x, v.y));
             endShape(CLOSE);
         \});
     \}
     
     void drawCenters() \{
-//            blendMode(REPLACE);
-//            fill(255);
-//            noStroke();
-//            double dotSize = 20;
-//            pointsRef.get().forEach(p -> 
-//                rect(p.x-dotSize/2, p.y-dotSize/2, dotSize, dotSize)
-//            );
-        blendMode(REPLACE);
+        blendMode(BLEND);
         textSize(10);
         fill(255);
         for(int i=0; i<cells.size(); ++i) \{
-            if(cells.get(i).valid()) \{
-                text(i, cells.get(i).centre.x, cells.get(i).centre.y);
-            \}
+            text(i, cells.get(i).centre.x, cells.get(i).centre.y);
         \}
     \}
     
     void drawEdges() \{
-        if(edgeWidth > EDGE_THRESHOLD) \{
-            outEdges.beginDraw();
-            outEdges.blendMode(REPLACE);
-            outEdges.strokeWeight(edgeWidth);
-            outEdges.stroke(255);
-            
-            for (int i=0; i<edges.length; ++i) \{
-                double\[\] edge = edges\[i\];
-                outEdges.line(edge\[0\], edge\[1\], edge\[2\], edge\[3\]);
-            \}
-            
-            if (!justColours) \{
-                outEdges.blendMode(MULTIPLY);
-                outEdges.image(inEdges, 0, 0);
-            \}
-            outEdges.endDraw();
-            blendMode(ADD);
-            image(outEdges, 0, 0);
+// For unknown reason below doesn't work            
+//            blendMode(BLEND);
+//            beginShape();
+//            if (justColours) \{
+//                fill(255);
+//            \} else \{
+//                texture(inEdges);
+//            \}
+//            beginShape();
+//            vertex(0, 0, 0, 0);
+//            vertex(width, 0, width, 0);
+//            vertex(width, height, width, height);
+//            vertex(0, height, 0, height);
+//            endShape(CLOSE);
+
+        outEdges.beginDraw();
+        outEdges.blendMode(REPLACE);
+        outEdges.strokeWeight(edgeWidth);
+        outEdges.fill(255);
+        outEdges.noStroke();
+        outEdges.rect(0, 0, width, height);
+
+        if (!justColours) \{
+            outEdges.blendMode(MULTIPLY);
+            outEdges.image(inEdges, 0, 0);
         \}
+        outEdges.endDraw();
+        blendMode(ADD);
+        image(outEdges, 0, 0);
     \}
+   
+    
+    
+    // Receive and parse voronoi data
+
+    void receiveCellGeometry() \{
+        Map<String,Object> v = voronoiSink.process(Collections.emptyMap());
+        if((v.isEmpty() || !v.containsKey(\"vertices\")) || !v.containsKey(\"centres\")) \{
+            receivingSource = \"No voronoi data received through the pipe\";
+//            log(ERROR, \"No voronoi data received\");
+            return;
+        \}
+        receivingSource = \"Received data through the pipe\"; // TODO: add check for double receiving
+        Object centresObject = v.get(\"centres\");
+        Object verticesObject = v.get(\"vertices\");
+        if(!(centresObject instanceof List) || !(verticesObject instanceof List)) \{
+            log(ERROR, \"Wrongly typed voronoi data received\");
+            return;
+        \}
+        List<PVector> centres = (List<PVector>) centresObject;
+        List<List<PVector>> polygons = (List<List<PVector>>) verticesObject;
+        if(centres.size() != polygons.size()) \{
+            log(ERROR, \"Mismatch centres and polygons count in voronoi data\");
+            return;
+        \}
+        
+        cells = geometryToCells(centres, polygons);
+    \}
+    
+    List<Cell> geometryToCells(List<PVector> centres, List<List<PVector>> polygons) \{
+        List<Cell> cells = new ArrayList<>();
+        for(int i=0; i<centres.size(); ++i) \{
+            List<PVector> vertices = polygons.get(i);
+            if (null == vertices || vertices.isEmpty()) \{
+                log(WARNING, \"Received weird cell \" + i);
+            \} else \{
+                cells.add(new Cell(i, centres.get(i), expandEdges(i, vertices)));
+            \}
+        \}
+        return cells;
+    \}
+    
+    List<PVector> expandEdges(int cellNo, List<PVector> vertices) \{
+        if (edgeWidth < EDGE_THRESHOLD) \{
+            return vertices;
+        \}
+        
+        List<PVector> originalVertices = new ArrayList<>(vertices);
+        // close polygon - jts requirement
+        originalVertices.add(originalVertices.get(0));
+        
+        Coordinate\[\] coordinates = originalVertices.stream()
+                .map(v -> new Coordinate(v.x, v.y))
+                .collect(Collectors.toList())
+                .toArray(new Coordinate\[0\]);
+        Polygon polygon = geometryFactory.createPolygon(coordinates); 
+        Geometry geometry = polygon.buffer(-edgeWidth/2);
+        Coordinate\[\] innerCoordinates = geometry.getBoundary().getCoordinates();
+        return Arrays.asList(innerCoordinates)
+                .subList(0, max(0, innerCoordinates.length-1))
+                .stream()
+                .map(c -> new PVector(c.x, c.y))
+                .collect(Collectors.toList());
+    \}
+
+
     
     // Cell container
 
-    static class Cell \{
+    class Cell \{
         final int no;
-        final PImage in;
-        final PVector colour;
-        
-        List<PVector> vertices;
-        PVector centre;
-        
-        Cell(int no, PImage in, PVector colour) \{
+        final PVector centre;
+        final List<PVector> vertices;
+
+        public Cell(int no, PVector centre, List<PVector> vertices) \{
             this.no = no;
-            this.in = in;
-            this.colour = colour;
+            this.centre = centre;
+            this.vertices = vertices;
+        \}
+    
+        PImage in() \{
+            PImage\[\] ins = \{ in0, in1, in2, in3, in4, in5, in6 \};
+            if(LAST_INPUT.equals(inputsToCells)) \{
+                return ins\[min(no, cellsInputs-1)\];
+            \} else \{ // if CYCLE
+                return ins\[no % cellsInputs\];
+            \}
         \}
         
-        boolean valid() \{
-            return null != vertices && null != centre;
+        PVector colour() \{
+            return coloursRef.get().get(no);
         \}
     \}
 "
     .cells-inputs 4
-    .inputs-to-cells "Cycle inputs over cells"
     .edge-width 1
     .draw-cells true
     .just-colours false
@@ -675,7 +709,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
   @ ./xfader-1 video:xfader {
     #%graph.x 877
     #%graph.y 218
-    .mix 0.9940828402366864
+    .mix 0.6627218934911243
   }
   @ ./white video:gl:p2d {
     #%graph.x 388
@@ -722,136 +756,198 @@ import java.util.concurrent.CopyOnWriteArrayList;
     .time 3
   }
   @ ./voronoi-renderer1 video:gl:p2d {
-    #%graph.x 629
-    #%graph.y 320
+    #%graph.x 668
+    #%graph.y 485
     .code "import org.locationtech.jts.geom.*;
-
+import java.io.DataInputStream;
+import java.io.IOException;
 
     static final int MAX_CELLS_COUNT = 40;
     static final double EDGE_THRESHOLD = 0.1;
-
-    static final String RANDOMLY = \"Randomly\";
     static final String LAST_INPUT = \"Input per cell, last to the rest\";
     static final String CYCLE = \"Cycle inputs over cells\";
+    
+    @In(0) PImage in0; @In(1) PImage in1; @In(2) PImage in2; @In(3) PImage in3;
+    @In(4) PImage in4; @In(5) PImage in5; @In(6) PImage in6;
+    @In(7) PImage inEdges;
+    
+    @P(11) @Type.Integer(def = 6, min = 1, max = 7) int cellsInputs;
+    @P(12) @Type.String(allowed = \{CYCLE, LAST_INPUT\}) String inputsToCells;
+    @P(15) @Type.Number(def = 3, min = 0, max = 1000, skew=4) @OnChange(\"updateEdges\") double edgeWidth;
+    @P(17) @Type.Boolean(def = false) boolean drawCells;
+    @P(18) @Type.Boolean(def = false) boolean drawCenters;
+    @P(19) @Type.Boolean(def = true) boolean justColours;
 
     @AuxIn(100) Data.In<Map<String, Object>> voronoiData;
     @Inject Data.Sink<Map<String, Object>> voronoiSink;
-    
-    @In(0) PImage in0;
-    @In(1) PImage in1;
-    @In(2) PImage in2;
-    @In(3) PImage in3;
-    @In(4) PImage in4;
-    @In(5) PImage in5;
-    @In(6) PImage in6;
-    @In(7) PImage inEdges;
-   
-    @OffScreen(persistent = false) PGraphics2D outEdges;
-    
-    @P(11) @Type.Integer(def = 6, min = 1, max = 7) @OnChange(\"updateCellsInputs\") int cellsInputs;
-    @P(12) @Type.String(allowed = \{RANDOMLY, CYCLE, LAST_INPUT\}) @OnChange(\"updateCellsInputs\") String inputsToCells;
-    
-    @P(15) @Type.Number(def = 3, min = 0, max = 1000, skew=4) @OnChange(\"updateEdges\") double edgeWidth;
-    
-    @P(17) @Type.Boolean(def = false) boolean drawCells;
 
-    @P(18) @Type.Boolean(def = false) boolean drawCenters;
-    
-    @P(19) @Type.Boolean(def = true) boolean justColours;
-    
+    @OffScreen(persistent = false) PGraphics2D outEdges;
     @Inject Ref<List<PVector>> coloursRef;
     
     List<Cell> cells = new ArrayList<>();
-    
     GeometryFactory geometryFactory = new GeometryFactory();
+    
+    @P(200) @OnChange(\"receive\") PBytes voronoiFarData;
+    
+    @P(300) @ReadOnly String receivingSource;
+        
+    void receive() \{
+        DataInputStream dis = new DataInputStream(voronoiFarData.asInputStream());
+        try \{
+            int cellsCount = dis.readInt();
+            List<PVector> centres = new ArrayList<>();
+            List<List<PVector>> polygons = new ArrayList<>();
+            for (int i=0; i<cellsCount; ++i) \{
+                centres.add(new PVector(dis.readDouble(), dis.readDouble()));
+                int verticesCount = dis.readInt();
+                List<PVector> polygon = new ArrayList<>();
+                for (int j=0; j<verticesCount; ++j) \{
+                    polygon.add(new PVector(dis.readDouble(), dis.readDouble()));
+                \}
+                polygons.add(polygon);
+            \}
+            dis.close();
+            
+            cells = geometryToCells(centres, polygons);
+        \} catch (IOException ex) \{
+            log(ERROR, \"WTF\");
+        \}
+    \};
+    
     
     // Initialisation
 
     @Override public void setup() \{
         Data.link(voronoiData, voronoiSink.input());
-        
-        initRefs();
-        updateCellsInputs();
-    \}
-    
-    void initRefs() \{ 
         coloursRef.init(ArrayList::new);
         coloursRef.apply(list -> \{
             while(list.size() < MAX_CELLS_COUNT) \{
                 list.add(new PVector(random(255), random(255), random(255)));
             \}
         \});
+        noStroke();
     \}
-    
-    void updateCellsInputs() \{
-        PImage\[\] ins = \{ in0, in1, in2, in3, in4, in5, in6 \};
-        List<Cell> newCells = new ArrayList<>();
-        Random r = new Random();
-        for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
-            int inNo;
-            if(LAST_INPUT.equals(inputsToCells)) \{
-                inNo = min(i, cellsInputs-1);
-            \} else if (CYCLE.equals(inputsToCells)) \{
-                inNo = i % cellsInputs;
-            \} else \{ // if RANDOM
-                inNo = r.nextInt(cellsInputs);
-            \}
-            Cell cell = new Cell(i, ins\[inNo\], coloursRef.get().get(i));
-            newCells.add(cell);
-        \}
-        cells = newCells;
-    \}
-
     
     
     // Drawing
     
     @Override public void draw() \{
         receiveCellGeometry();
-
+        if(edgeWidth > EDGE_THRESHOLD) \{
+            drawEdges();
+        \}
         if(drawCells) \{
             drawCells();
         \}
         if(drawCenters) \{
             drawCenters();
         \}
-        drawEdges();
     \}
-
-    void receiveCellGeometry() \{
-        Map<String,Object> v = voronoiSink.process(Collections.emptyMap());
-        if(!v.isEmpty() && v.containsKey(\"vertices\") && v.containsKey(\"centres\")) \{
-            Object centresObject = v.get(\"centres\");
-            Object verticesObject = v.get(\"vertices\");
-            if(centresObject instanceof List && verticesObject instanceof List) \{
-                List<Cell> newCells = new ArrayList<>(cells);
-                List<PVector> centres = (List<PVector>) centresObject;
-                for(int i=0; i<centres.size(); ++i) \{
-                    newCells.get(i).centre = centres.get(i);
-                \}
-                List<List<PVector>> vertices = (List<List<PVector>>) verticesObject;
-                for(int i=0; i<vertices.size(); ++i) \{
-                    updateEdges_custom(newCells.get(i), vertices.get(i));
-                \}
-                cells = newCells;
+    
+    void drawCells() \{
+        cells.forEach(cell -> \{
+            blendMode(BLEND);
+            beginShape();
+            if (justColours) \{
+                PVector c = cell.colour();
+                fill(c.x, c.y, c.z);
             \} else \{
-                log(ERROR, \"Weird data received\");
+                texture(cell.in());
             \}
+            cell.vertices.forEach(v -> vertex(v.x, v.y, v.x, v.y));
+            endShape(CLOSE);
+        \});
+    \}
+    
+    void drawCenters() \{
+        blendMode(BLEND);
+        textSize(10);
+        fill(255);
+        for(int i=0; i<cells.size(); ++i) \{
+            text(i, cells.get(i).centre.x, cells.get(i).centre.y);
         \}
     \}
     
-    void updateEdges(Cell cell, List<PVector> vertices) \{
-        // leave as is if no edge
-        if (edgeWidth < EDGE_THRESHOLD) \{
-            cell.vertices = vertices;
+    void drawEdges() \{
+// For unknown reason below doesn't work            
+//            blendMode(BLEND);
+//            beginShape();
+//            if (justColours) \{
+//                fill(255);
+//            \} else \{
+//                texture(inEdges);
+//            \}
+//            beginShape();
+//            vertex(0, 0, 0, 0);
+//            vertex(width, 0, width, 0);
+//            vertex(width, height, width, height);
+//            vertex(0, height, 0, height);
+//            endShape(CLOSE);
+
+        outEdges.beginDraw();
+        outEdges.blendMode(REPLACE);
+        outEdges.strokeWeight(edgeWidth);
+        outEdges.fill(255);
+        outEdges.noStroke();
+        outEdges.rect(0, 0, width, height);
+
+        if (!justColours) \{
+            outEdges.blendMode(MULTIPLY);
+            outEdges.image(inEdges, 0, 0);
+        \}
+        outEdges.endDraw();
+        blendMode(ADD);
+        image(outEdges, 0, 0);
+    \}
+   
+    
+    
+    // Receive and parse voronoi data
+
+    void receiveCellGeometry() \{
+        Map<String,Object> v = voronoiSink.process(Collections.emptyMap());
+        if((v.isEmpty() || !v.containsKey(\"vertices\")) || !v.containsKey(\"centres\")) \{
+            receivingSource = \"No voronoi data received through the pipe\";
+//            log(ERROR, \"No voronoi data received\");
             return;
         \}
-        if (null == vertices || vertices.isEmpty()) \{
-            log(WARNING, \"Received weird cell \" + cell.no);
+        receivingSource = \"Received data through the pipe\"; // TODO: add check for double receiving
+        Object centresObject = v.get(\"centres\");
+        Object verticesObject = v.get(\"vertices\");
+        if(!(centresObject instanceof List) || !(verticesObject instanceof List)) \{
+            log(ERROR, \"Wrongly typed voronoi data received\");
+            return;
+        \}
+        List<PVector> centres = (List<PVector>) centresObject;
+        List<List<PVector>> polygons = (List<List<PVector>>) verticesObject;
+        if(centres.size() != polygons.size()) \{
+            log(ERROR, \"Mismatch centres and polygons count in voronoi data\");
             return;
         \}
         
-        final List<PVector> originalVertices = new ArrayList<>(vertices);
+        cells = geometryToCells(centres, polygons);
+    \}
+    
+    List<Cell> geometryToCells(List<PVector> centres, List<List<PVector>> polygons) \{
+        List<Cell> cells = new ArrayList<>();
+        for(int i=0; i<centres.size(); ++i) \{
+            List<PVector> vertices = polygons.get(i);
+            if (null == vertices || vertices.isEmpty()) \{
+                log(WARNING, \"Received weird cell \" + i);
+            \} else \{
+                cells.add(new Cell(i, centres.get(i), expandEdges(i, vertices)));
+            \}
+        \}
+        return cells;
+    \}
+    
+    List<PVector> expandEdges(int cellNo, List<PVector> vertices) \{
+        if (edgeWidth < EDGE_THRESHOLD) \{
+            return vertices;
+        \}
+        
+        List<PVector> originalVertices = new ArrayList<>(vertices);
+        // close polygon - jts requirement
         originalVertices.add(originalVertices.get(0));
         
         Coordinate\[\] coordinates = originalVertices.stream()
@@ -861,268 +957,136 @@ import java.util.concurrent.CopyOnWriteArrayList;
         Polygon polygon = geometryFactory.createPolygon(coordinates); 
         Geometry geometry = polygon.buffer(-edgeWidth/2);
         Coordinate\[\] innerCoordinates = geometry.getBoundary().getCoordinates();
-        cell.vertices = Arrays.asList(innerCoordinates)
+        return Arrays.asList(innerCoordinates)
                 .subList(0, max(0, innerCoordinates.length-1))
                 .stream()
                 .map(c -> new PVector(c.x, c.y))
                 .collect(Collectors.toList());
     \}
-    
-    /**
-     * Calculates inner polygons (removing edges)
-     */
-    void updateEdges_custom(Cell cell, List<PVector> vertices) \{
-        // leave as is if no edge
-        if (edgeWidth < EDGE_THRESHOLD) \{
-            cell.vertices = vertices;
-            return;
-        \}
-        if (null == vertices) \{
-            log(WARNING, \"Received weird cell \" + cell.no);
-            return;
-        \}
-        
-        int count = vertices.size();
-        
-        // push edges inside
-        List<List<PVector>> edges = new ArrayList<>(count);
-        for (int i=0; i<vertices.size(); ++i) \{
-            PVector a = vertices.get(i);
-            PVector b = vertices.get((i+1) % count);
-            boolean verticalBorder = a.x == b.x && a.x % width < EDGE_THRESHOLD;
-            boolean horisontalBorder = a.y == b.y && a.y % height < EDGE_THRESHOLD;
-            if(verticalBorder || horisontalBorder) \{
-                edges.add(Arrays.asList(a, b));
-            \} else \{
-                edges.add(moveEdge(a, b, cell.centre, edgeWidth/2)); 
-            \}
-        \}
 
-        
-        List<PVector> newVertices = verticesFromEdges(edges);
-        
-        cell.label = \"\" + count + \"\\n\";
-        List<List<PVector>> cleanEdges = new ArrayList<>(count);
-        // Clear self-intersection if found https://stackoverflow.com/a/7785719
-        boolean previousBad = false;
-        for (int i=-1; i<count; ++i) \{
-            PVector na = newVertices.get((i+count-1) % count);
-            PVector nb = newVertices.get((i+count) % count);
-            PVector nc = newVertices.get((i+1) % count);
-            PVector nba = na.copy().sub(nb);
-            PVector nbc = nc.copy().sub(nb); 
-            PVector nCross = nbc.copy().cross(nba);
 
-            PVector oa = vertices.get((i+count-1) % count);
-            PVector ob = vertices.get((i+count) % count);
-            PVector oc = vertices.get((i+1) % count);
-            PVector oba = oa.copy().sub(ob);
-            PVector obc = oc.copy().sub(ob);
-            PVector oCross = obc.copy().cross(oba);
-
-            boolean bad = Math.signum(nCross.z) != Math.signum(oCross.z);
-            if (i != -1) \{
-                if(bad && !previousBad) \{
-                    //cell.label += String.format(\"%.1f\\n\", nCross.z);
-                    cell.label += \"-\\n\";
-                    previousBad = true;
-                \} else \{
-                    cleanEdges.add(Arrays.asList(nb, nc));
-                    cell.label += \"+\\n\";
-                    previousBad = false;
-                \}
-            \} else \{
-                previousBad = bad;
-            \}
-
-        \}
-        newVertices = verticesFromEdges(cleanEdges);
-        
-        cell.vertices = newVertices.size() > 2 ? newVertices : Collections.emptyList();
-    \}
-    
-    /**
-     * Move edge towards centre https://stackoverflow.com/a/15187473
-     * 
-     * @param a first edge point
-     * @param b second edge point
-     * @param c centre
-     * @param ew distance (edge half width)
-     * @return two new points
-     */
-    List<PVector> moveEdge(PVector a, PVector b, PVector c, double ew) \{
-        double t = ((c.x-a.x)*(b.x-a.x)+(c.y-a.y)*(b.y-a.y))
-            / (pow(b.x-a.x, 2)+pow(b.y-a.y, 2));
-        // d - base of the perpendicular from c to line a-b
-        PVector d = new PVector(a.x+t*(b.x-a.x), a.y+t*(b.y-a.y));
-        double k = ew / c.dist(d);
-        return Arrays.asList(
-            new PVector(a.x+k*(c.x-d.x), a.y+k*(c.y-d.y)),
-            new PVector(b.x+k*(c.x-d.x), b.y+k*(c.y-d.y)));
-    \}
-    
-    /**
-     * https://algorithmtutor.com/Computational-Geometry/Check-if-a-point-is-inside-a-polygon/
-     * 
-     * @param polygon
-     * @param point
-     * @return 
-     */
-    boolean isWithinPolygon(List<PVector> polygon, PVector point) \{
-        List<Double> as = new ArrayList<>(polygon.size());
-        List<Double> bs = new ArrayList<>(polygon.size());
-        List<Double> cs = new ArrayList<>(polygon.size());
-        for(int i=0; i<polygon.size(); ++i) \{
-            PVector p1 = polygon.get(i);
-            PVector p2 = polygon.get((i+1)%polygon.size());
-            double a = -(p2.y - p1.y);
-            double b = p2.x - p1.x;
-            double c = -(a*p1.x + b*p1.y);
-            as.add(a);
-            bs.add(b);
-            cs.add(c);
-        \}
-        List<Double> ds = new ArrayList<>(polygon.size());
-        for(int i=0; i<polygon.size(); ++i) \{
-            double d = as.get(i)*point.x + bs.get(i)*point.y + cs.get(i);
-            ds.add(d);
-        \}
-        boolean t1 = ds.stream().allMatch(d -> d <= EDGE_THRESHOLD);
-        boolean t2 = ds.stream().allMatch(d -> d >= -EDGE_THRESHOLD);
-        return t1 || t2;
-    \}
-    
-    /**
-     * find new intersection points of moved edges
-     * https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection#Given_two_points_on_each_line
-     */
-    List<PVector> verticesFromEdges(List<List<PVector>> edges) \{
-        List<PVector> vertices = new ArrayList<>(edges.size());
-        for (int i=0; i<edges.size(); ++i) \{
-            List<PVector> e1 = edges.get(i);
-            List<PVector> e2 = edges.get((i+1) % edges.size());
-            
-            PVector v1 = e1.get(0), v2 = e1.get(1), v3 = e2.get(0), v4 = e2.get(1);
-            double denominator = (v1.x-v2.x)*(v3.y-v4.y)-(v1.y-v2.y)*(v3.x-v4.x);
-            double x = ((v1.x*v2.y-v1.y*v2.x)*(v3.x-v4.x)-(v1.x-v2.x)*(v3.x*v4.y-v3.y*v4.x))
-                    / denominator;
-            double y = ((v1.x*v2.y-v1.y*v2.x)*(v3.y-v4.y)-(v1.y-v2.y)*(v3.x*v4.y-v3.y*v4.x))
-                    / denominator;
-            vertices.add(new PVector(x, y));
-        \}
-        return vertices;
-    \}
-    
-    void drawCells() \{
-        // Filtering on valid unnecessary
-        cells.stream().filter(Cell::valid).forEach(cell -> \{
-            blendMode(BLEND);
-            beginShape();
-            if (justColours) \{
-                PVector c = cell.colour;
-                fill(c.x, c.y, c.z);
-            \} else \{
-                texture(cell.in);
-            \}
-            noStroke();
-            cell.vertices.forEach(v -> vertex(v.x, v.y, v.x, v.y));
-            endShape(CLOSE);
-        \});
-    \}
-    
-    void drawCenters() \{
-        blendMode(REPLACE);
-        textSize(10);
-        fill(255, 0, 0);
-        for(int i=0; i<cells.size(); ++i) \{
-            if(cells.get(i).valid()) \{
-                text(cells.get(i).label + i, cells.get(i).centre.x, cells.get(i).centre.y);
-            \}
-        \}
-    \}
-    
-    void drawEdges() \{
-        if(edgeWidth > EDGE_THRESHOLD) \{
-            outEdges.beginDraw();
-            outEdges.blendMode(REPLACE);
-            outEdges.strokeWeight(edgeWidth);
-            outEdges.fill(255);
-            outEdges.noStroke();
-            outEdges.beginShape();
-
-            PShape borders = outEdges.createShape().beginShape()
-                    .vertex(0, height).vertex(0, 0)
-                    .vertex(width, 0).vertex(width, height);
-            cells.stream().filter(Cell::valid).forEach(cell -> \{
-                borders.beginContour();
-                cell.vertices.forEach(v -> borders.vertex(v.x, v.y));
-                borders.endContour();
-            \});
-            borders.endShape();
-            outEdges.shape(borders);
-            
-            if (!justColours) \{
-                outEdges.blendMode(MULTIPLY);
-                outEdges.image(inEdges, 0, 0);
-            \}
-            outEdges.endDraw();
-            blendMode(ADD);
-            image(outEdges, 0, 0);
-        \}
-    \}
     
     // Cell container
 
-    static class Cell \{
+    class Cell \{
         final int no;
-        final PImage in;
-        final PVector colour;
-        String label = \"\";
-        
-        List<PVector> vertices;
-        PVector centre;
-        
-        Cell(int no, PImage in, PVector colour) \{
+        final PVector centre;
+        final List<PVector> vertices;
+
+        public Cell(int no, PVector centre, List<PVector> vertices) \{
             this.no = no;
-            this.in = in;
-            this.colour = colour;
+            this.centre = centre;
+            this.vertices = vertices;
+        \}
+    
+        PImage in() \{
+            PImage\[\] ins = \{ in0, in1, in2, in3, in4, in5, in6 \};
+            if(LAST_INPUT.equals(inputsToCells)) \{
+                return ins\[min(no, cellsInputs-1)\];
+            \} else \{ // if CYCLE
+                return ins\[no % cellsInputs\];
+            \}
         \}
         
-        boolean valid() \{
-            return null != vertices && null != centre;
+        PVector colour() \{
+            return coloursRef.get().get(no);
         \}
     \}
 "
     .cells-inputs 4
-    .inputs-to-cells "Cycle inputs over cells"
-    .edge-width 19.311472026808715
+    .edge-width 20.56710084356379
     .draw-cells true
-    .draw-centers true
     .just-colours false
+    .voronoi-far-data "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
+Zrvdzcf0QGY0rSePcHFATOvSm39eXQ=="
   }
   @ ./voronoi-generator core:custom {
     #%graph.x -100
     #%graph.y 382
     .code "import org.kynosarges.tektosyne.geometry.*;
 import java.util.concurrent.CopyOnWriteArrayList;
-
+import java.io.DataOutputStream;
+import java.io.IOException;
 
     static final int MAX_CELLS_COUNT = 40;
-    static final double EDGE_THRESHOLD = 0.1;
     static final String ALL = \"All\";
     static final String ONE_BY_ONE = \"One by one\";
     static final String RANDOMLY = \"Randomly\";
     static final String LAST_INPUT = \"Input per cell, last to the rest\";
     static final String CYCLE = \"Cycle inputs over cells\";
     
-    @Out(100) Data.Out<Map<String, Object>> voronoiDataOut;
-    @P(120) @Type.Boolean(def=false) boolean sender;   
-    
     @P(0) @Type.String(allowed = \{ALL, ONE_BY_ONE, RANDOMLY\}, def = RANDOMLY) String movements;
     @P(1) @Type.Number(def = 20, min = 0, max = 100, skew=0.8) double movementSpeed; // percentage of screen width
     @P(2) @Type.Number(def = 1, min = 0, max = 15, skew=1.5) double timeToMove;
     
     @P(10) @Type.Integer(def = 6, min = 2, max = MAX_CELLS_COUNT) @OnChange(\"updateCellsCount\") int cellsCount;
+
+    @P(11) @Type.Integer(def=800) @OnChange(\"init\") int width;
+    @P(12) @Type.Integer(def=600) @OnChange(\"init\") int height;
+    
+    @Out(100) Data.Out<Map<String, Object>> voronoiDataOut;
+    @Out(101) Output vorOut;
     
     List<Cell> cells = new ArrayList<>();
     
@@ -1131,9 +1095,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
     
     // Current coordinates of cells centers
     @Inject Ref<List<PVector>> centresRef;
-    
-    // Coordinates of cell edges
-    double\[\]\[\] edges;
     
     // Target coordinates of cells
     @Inject Property m0x, m1x, m2x, m3x, m4x, m5x, m6x, m7x, m8x, m9x,
@@ -1144,9 +1105,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
             m10y, m11y, m12y, m13y, m14y, m15y, m16y, m17y, m18y, m19y,
             m20y, m21y, m22y, m23y, m24y, m25y, m26y, m27y, m28y, m29y,
             m30y, m31y, m32y, m33y, m34y, m35y, m36y, m37y, m38y, m39y;
-
-    @P(100) @Type.Integer(def=800) @OnChange(\"init\") int width;
-    @P(101) @Type.Integer(def=600) @OnChange(\"init\") int height;
     
     
     // Initialisation
@@ -1160,7 +1118,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
     Map<String, Object> sendCellGeometry() \{
         Map<String, Object> v = new HashMap<>();
-        v.put(\"edges\", edges);
         List<List<PVector>> vertices = cells.subList(0, cellsCount).stream()
                 .map(Cell::vertices).collect(Collectors.toList());
         v.put(\"vertices\", vertices);
@@ -1182,7 +1139,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
         List<Cell> newCells = new ArrayList<>();
         for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
             Cell cell = new Cell(
-                    i,
                     moves\[i\]\[0\],
                     moves\[i\]\[1\]);
             newCells.add(cell);
@@ -1228,6 +1184,33 @@ import java.util.concurrent.CopyOnWriteArrayList;
         \}
         if(moved) \{
             recalculateVoronoiRegions();
+
+            //TODO: cleanup
+            PBytes.OutputStream os = new PBytes.OutputStream();
+            DataOutputStream dos = new DataOutputStream(os);
+            try \{
+                dos.writeInt(cellsCount);
+                for(int i=0; i<cellsCount; ++i) \{
+                    PVector centre = centresRef.get().get(i);
+                    dos.writeDouble(centre.x);
+                    dos.writeDouble(centre.y);
+                    Cell cell = cells.get(i);
+                    dos.writeInt(cell.vertices.size());
+                    cell.vertices.forEach(v -> \{
+                        try \{
+                            dos.writeDouble(v.x);
+                            dos.writeDouble(v.y);
+                        \} catch (IOException ex) \{
+                            log(ERROR, \"OOpsie2\"); //TODO: clean up this shit
+                        \}
+                    \});
+                \}
+                dos.flush();
+                vorOut.send(os.toBytes());
+                dos.close();
+            \} catch (IOException ex) \{
+                log(ERROR, \"OOpsie\");
+            \}
         \}
     \}
 
@@ -1294,30 +1277,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
                     .map(p -> new PVector(p.x, p.y))
                     .collect(Collectors.toList());
         \}
-        
-        double newEdges\[\]\[\] = new double\[results.voronoiEdges.length\]\[\];
-        for (int i = 0; i<results.voronoiEdges.length; ++i) \{
-            VoronoiEdge edge = results.voronoiEdges\[i\];
-            newEdges\[i\] = PointD.toDoubles(
-                    results.voronoiVertices\[edge.vertex1\], 
-                    results.voronoiVertices\[edge.vertex2\]);
-        \}
-
-        edges = newEdges;
     \}
 
 
 
-    // Cell container
+    // Cell container TODO: split this into mutable/immutable
 
     static class Cell \{
-        final int no;
         final Property moveX;
         final Property moveY;
         List<PVector> vertices;
         
-        Cell(int no, Property moveX, Property moveY) \{
-            this.no = no;
+        Cell(Property moveX, Property moveY) \{
             this.moveX = moveX;
             this.moveY = moveY;
         \}
@@ -1346,7 +1317,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
     \}
 "
     .movements All
-    .cells-count 10
+    .cells-count 32
   }
   @ ./blue video:gl:p2d {
     #%graph.x 409
@@ -1743,17 +1714,27 @@ import java.util.concurrent.CopyOnWriteArrayList;
     .draw-centers true
     .just-colours false
   }
+  @ ./noise-1 video:source:noise {
+    #%graph.x 396
+    #%graph.y 504
+  }
+  @ ./send-1 core:routing:send {
+    #%graph.x 171
+    #%graph.y 784
+    .address /main-out/voronoi-renderer1.voronoi-far-data
+  }
   ~ ./xfader-1!out ./screen!in
   ~ ./strobe-timer!out ./voronoi-sender!move-cells
   ~ ./voronoi-renderer1!out ./xfader-1!in-2
   ~ ./data-receive!out ./screen!in
   ~ ./data-send!out ./data-receive!data-in
-  ~ ./voronoi-generator!voronoi-data-out ./voronoi-renderer1!voronoi-data
-  ~ ./voronoi-renderer!out ./xfader-1!in-1
   ~ ./white!out ./voronoi-renderer!in-0
   ~ ./white!out ./voronoi-renderer!in-edges
   ~ ./strobe-timer!out ./voronoi-generator!move-cells
   ~ ./white!out ./voronoi-renderer1!in-0
-  ~ ./white!out ./voronoi-renderer1!in-edges
-  ~ ./blue!out ./voronoi-renderer1!in-edges
+  ~ ./noise-1!out ./voronoi-renderer1!in-edges
+  ~ ./noise-1!out ./voronoi-renderer1!in-1
+  ~ ./voronoi-renderer!out ./xfader-1!in-1
+  ~ ./voronoi-generator!voronoi-data-out ./voronoi-renderer!voronoi-data
+  ~ ./voronoi-generator!vor-out ./send-1!in
 }
