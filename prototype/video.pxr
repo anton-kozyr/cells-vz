@@ -1,0 +1,2818 @@
+@ /video root:video {
+  #%autostart true
+  #%praxis.version 4.1.1
+  .renderer OpenGL
+  .width 1920
+  .height 1200
+  .fps 60.0
+  @ ./screen video:output {
+    #%graph.x 327
+    #%graph.y -471
+    .device 2
+    .full-screen true
+    .undecorated true
+    .show-cursor true
+  }
+  @ ./x-fader video:xfader {
+    #%graph.x 97
+    #%graph.y -546
+    .code "
+
+    enum Mode \{Normal, Add, Difference, BitXor\};
+    
+    @In(0) PImage bw;
+    @In(1) PImage clouds;
+    
+    @P(1) Mode mode;
+    @P(2) @Type.Number(min=0, max=30, def=10) double xFadeTime;
+    @P(3) @ReadOnly @Type.Number(min = 0, max = 1) Property mix;
+    
+    @Inject Ref<int\[\]> inIdsRef;
+    
+    @T(0) void reset() \{
+        inIdsRef.apply(ins -> \{
+           ins\[0\] = 0;
+           ins\[1\] = 0;
+           mix.set(0);
+        \});
+    \}
+    
+    @T(10) void toBw() \{
+        mode = Mode.Normal;
+        fadeTo(bw);
+    \}
+    
+    @T(11) void toClouds() \{
+        mode = Mode.Normal;
+        fadeTo(clouds);
+    \}
+    
+    void fadeTo(PImage in) \{
+        inIdsRef.apply(inIds -> \{
+            inIds\[1\] = idByIn(in);
+            if (inIds\[0\] != inIds\[1\]) \{
+                mix.set(0).to(1).in(xFadeTime).easeInOut().whenDone(mix -> \{
+                    inIds\[0\] = inIds\[1\];
+                    mix.set(0);
+                \});
+            \}
+        \});
+    \}
+    
+    @Override
+    public void init() \{
+        inIdsRef.init(() -> new int\[\] \{0, 1\});
+        attachRenderQuery(\"bw\", rendering -> rendering && inActive(bw));
+        attachRenderQuery(\"clouds\", rendering -> rendering && inActive(clouds));
+    \}
+    
+    @Override
+    public void draw() \{
+        inIdsRef.apply(inIds -> \{
+            PImage in0 = inById(inIds\[0\]);
+            PImage in1 = inById(inIds\[1\]);
+            if (d(mix) < 0.001) \{
+                copy(in0);
+                release(in0);
+            \} else if (d(mix) > 0.999) \{
+                copy(in1);
+                release(in1);
+            \} else if (mode == Mode.Normal) \{
+                blendMode(ADD, 1 - d(mix));
+                image(in0, 0, 0);
+                blendMode(ADD, d(mix));
+                image(in1, 0, 0);
+            \} else \{
+                drawBlended(in0, in1);
+            \}
+        \});
+    \}
+    
+    void drawBlended(PImage in0, PImage in1) \{
+        PImage fg, bg;
+        double opacity;
+        if (d(mix) > 0.5) \{
+            fg = in0;
+            bg = in1;
+            opacity = (1.0 - d(mix)) * 2;
+        \} else \{
+            fg = in1;
+            bg = in0;
+            opacity = d(mix) * 2;
+        \}
+        copy(bg);
+        release(bg);
+        switch (mode) \{
+            case Difference:
+                blendMode(DIFFERENCE, opacity);
+                break;
+            case BitXor:
+                blendMode(BITXOR, opacity);
+                break;
+            default:
+                blendMode(ADD, opacity);
+                break;
+        \}
+        image(fg, 0, 0);
+    \}
+    
+    PImage\[\] ins() \{
+        return new PImage\[\] \{ bw, clouds \};
+    \}
+    
+    int idByIn(PImage in) \{
+        for(int i=0; i<ins().length; ++i) \{
+            if(inById(i) == in) \{
+                return i;
+            \}
+        \}
+        return 0;
+    \}
+     
+    PImage inById(int id) \{
+        return ins()\[id\];
+    \}
+   
+    boolean inActive(PImage in) \{
+        return inById(0) == in || inById(1) == in;
+    \}
+"
+    .mode Difference
+  }
+  @ ./voronoi-generator core:custom {
+    #%graph.x -760
+    #%graph.y -436
+    .code "import org.kynosarges.tektosyne.geometry.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.io.DataOutputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+
+
+    static final int MAX_CELLS_COUNT = 80;
+    enum Movements \{
+        all, oneByOne, randomly
+    \};
+    
+    @P(0) @OnChange(\"sendProperties\") Movements movements;
+    @P(1) @Type.Number(def = 20, min = 0, max = 100, skew=0.8) @OnChange(\"sendProperties\") double movementSpeed; // percentage of screen width
+    @P(2) @Type.Number(def = 1, min = 0, max = 15, skew=1.5) @OnChange(\"sendProperties\") double timeToMove;
+    
+    @P(10) @Type.Integer(def = 6, min = 2, max = MAX_CELLS_COUNT) @OnChange(\"onCellsCountChangedFromUI\") int cellsCount;
+
+    @P(11) @Type.Integer(def=800) int width;
+    @P(12) @Type.Integer(def=600) int height;
+    
+    @Out(100) Data.Out<PBytes> voronoiPipeOut;
+    @Out(101) Output voronoiOut;
+    @Out(102) Output propertiesOut;
+    @AuxIn(101) @ReadOnly Input propertiesIn;
+    
+    List<Cell> cells = new ArrayList<>();
+    
+    // Cache of the encoded data to send
+    PBytes voronoiBytes;
+    
+    // Last moved cell number
+    int lastMoved = -1;
+    
+    // Current coordinates of cells centers
+    @Inject Ref<List<PVector>> centresRef;
+    
+    // Target coordinates of cells
+    @Inject Property m0x, m1x, m2x, m3x, m4x, m5x, m6x, m7x, m8x, m9x,
+            m10x, m11x, m12x, m13x, m14x, m15x, m16x, m17x, m18x, m19x,
+            m20x, m21x, m22x, m23x, m24x, m25x, m26x, m27x, m28x, m29x,
+            m30x, m31x, m32x, m33x, m34x, m35x, m36x, m37x, m38x, m39x,
+            m40x, m41x, m42x, m43x, m44x, m45x, m46x, m47x, m48x, m49x,
+            m50x, m51x, m52x, m53x, m54x, m55x, m56x, m57x, m58x, m59x,
+            m60x, m61x, m62x, m63x, m64x, m65x, m66x, m67x, m68x, m69x,
+            m70x, m71x, m72x, m73x, m74x, m75x, m76x, m77x, m78x, m79x;
+    @Inject Property m0y, m1y, m2y, m3y, m4y, m5y, m6y, m7y, m8y, m9y,
+            m10y, m11y, m12y, m13y, m14y, m15y, m16y, m17y, m18y, m19y,
+            m20y, m21y, m22y, m23y, m24y, m25y, m26y, m27y, m28y, m29y,
+            m30y, m31y, m32y, m33y, m34y, m35y, m36y, m37y, m38y, m39y,
+            m40y, m41y, m42y, m43y, m44y, m45y, m46y, m47y, m48y, m49y,
+            m50y, m51y, m52y, m53y, m54y, m55y, m56y, m57y, m58y, m59y,
+            m60y, m61y, m62y, m63y, m64y, m65y, m66y, m67y, m68y, m69y,
+            m70y, m71y, m72y, m73y, m74y, m75y, m76y, m77y, m78y, m79y;
+    
+    
+    // Initialisation
+
+    @Override public void init() \{
+        centresRef.init(CopyOnWriteArrayList::new);
+        initialiseCells();
+        updateCellsCount();
+        Data.link(Data.supply(this::encodeVoronoiData), voronoiPipeOut);
+        propertiesIn.valuesAs(PBytes.class).link(this::receiveProperties);
+        sendProperties();
+    \}
+
+    void initialiseCells() \{
+        Property\[\]\[\] moves = \{ 
+            \{m0x, m0y\}, \{m1x, m1y\}, \{m2x, m2y\}, \{m3x, m3y\}, \{m4x, m4y\}, 
+            \{m5x, m5y\}, \{m6x, m6y\}, \{m7x, m7y\}, \{m8x, m8y\}, \{m9x, m9y\},
+            \{m10x, m10y\}, \{m11x, m11y\}, \{m12x, m12y\}, \{m13x, m13y\}, \{m14x, m14y\}, 
+            \{m15x, m15y\}, \{m16x, m16y\}, \{m17x, m17y\}, \{m18x, m18y\}, \{m19x, m19y\},
+            \{m20x, m20y\}, \{m21x, m21y\}, \{m22x, m22y\}, \{m23x, m23y\}, \{m24x, m24y\}, 
+            \{m25x, m25y\}, \{m26x, m26y\}, \{m27x, m27y\}, \{m28x, m28y\}, \{m29x, m29y\},
+            \{m30x, m30y\}, \{m31x, m31y\}, \{m32x, m32y\}, \{m33x, m33y\}, \{m34x, m34y\}, 
+            \{m35x, m35y\}, \{m36x, m36y\}, \{m37x, m37y\}, \{m38x, m38y\}, \{m39x, m39y\},
+            \{m40x, m40y\}, \{m41x, m41y\}, \{m42x, m42y\}, \{m43x, m43y\}, \{m44x, m44y\}, 
+            \{m45x, m45y\}, \{m46x, m46y\}, \{m47x, m47y\}, \{m48x, m48y\}, \{m49x, m49y\},
+            \{m50x, m50y\}, \{m51x, m51y\}, \{m52x, m52y\}, \{m53x, m53y\}, \{m54x, m54y\}, 
+            \{m55x, m55y\}, \{m56x, m56y\}, \{m57x, m57y\}, \{m58x, m58y\}, \{m59x, m59y\},
+            \{m60x, m60y\}, \{m61x, m61y\}, \{m62x, m62y\}, \{m63x, m63y\}, \{m64x, m64y\}, 
+            \{m65x, m65y\}, \{m66x, m66y\}, \{m67x, m67y\}, \{m68x, m68y\}, \{m69x, m69y\},
+            \{m70x, m70y\}, \{m71x, m71y\}, \{m72x, m72y\}, \{m73x, m73y\}, \{m74x, m74y\}, 
+            \{m75x, m75y\}, \{m76x, m76y\}, \{m77x, m77y\}, \{m78x, m78y\}, \{m79x, m79y\}
+        \};
+        List<Cell> newCells = new ArrayList<>();
+        for(int i=0; i<MAX_CELLS_COUNT; ++i) \{
+            newCells.add(new Cell(i, moves\[i\]\[0\], moves\[i\]\[1\]));
+        \}
+        cells = newCells;
+    \}
+    
+    void updateCellsCount() \{
+        centresRef.apply(points -> \{
+            int oldSize = points.size();
+            if (oldSize != cellsCount) \{
+                RectD clipRect = new RectD(0, 0, width, height);
+                if (oldSize < cellsCount) \{
+                    PointD\[\] newPoints = GeoUtils.randomPoints(cellsCount - oldSize, clipRect, new PointDComparatorY(0), 10);
+                    points.addAll(Stream.of(newPoints).map(p -> new PVector(p.x, p.y)).collect(Collectors.toList()));
+                \} else \{
+                    points.subList(cellsCount, oldSize).clear();
+                \}
+                recalculateVoronoiRegions();
+
+                // set coordinates of new cells if added
+                for(int i = oldSize; i < points.size(); ++i) \{
+                    PVector point = points.get(i);
+                    cells.get(i).jumpTo(point.x, point.y);
+                \}
+            \}
+        \});
+    \}
+    
+    void onCellsCountChangedFromUI() \{
+        updateCellsCount();
+        sendProperties();
+    \}
+
+    // Main method
+    
+    @Override
+    public void update() \{
+        boolean moved = false;
+        for(int i=0; i<cellsCount; ++i) \{
+            PVector oldPoint = centresRef.get().get(i);
+            PVector newPoint = new PVector(d(cells.get(i).moveX), d(cells.get(i).moveY));
+            boolean pointMoved = abs(oldPoint.x - newPoint.x) > 1 || abs(oldPoint.y - newPoint.y) > 1;
+            if(pointMoved) \{
+                centresRef.get().set(i, newPoint);
+                moved = true;
+            \}
+        \}
+        if(moved) \{
+            recalculateVoronoiRegions();
+            voronoiBytes = encodeVoronoiData();
+            voronoiOut.send(voronoiBytes);
+        \}
+        sendProperties();
+    \}
+
+    // Cell movement
+    
+    @T(1)
+    public void moveCells() \{
+        if (movements.equals(Movements.all)) \{
+            cells.forEach(this::moveCell);
+        \} else if (movements.equals(Movements.oneByOne)) \{
+            if(lastMoved < 0 || lastMoved >= cellsCount) \{
+                lastMoved = 0;
+            \}
+            moveCell(cells.get(lastMoved++));
+        \} else if (movements.equals(Movements.randomly)) \{
+            cells.stream()
+                    .filter(c -> random(1) > 0.5)
+                    .forEach(this::moveCell);
+        \}
+    \}
+    
+    void moveCell(Cell cell) \{
+        double nx, ny;
+        double deltaMove = width*movementSpeed/100;
+
+        // ensure new coordinate is inside viewport
+        do \{
+            double alpha = random(PI*2);
+            nx = cell.x() + cos(alpha) * deltaMove;
+            ny = cell.y() + sin(alpha) * deltaMove;
+            deltaMove *= 0.7; // slow down to avoid infinite loop
+        \} while (nx < 0 || nx > width || ny < 0 || ny > height);
+        
+        cell.startMovingTo(nx, ny, timeToMove);
+    \}
+    
+    // Cell count manipulation
+    
+    @T(2) void addCell() \{
+        if(cellsCount < MAX_CELLS_COUNT) \{
+            cellsCount += 1;
+            updateCellsCount();
+        \}
+    \}
+    
+    @T(3) void removeCell() \{
+        if(cellsCount > 2) \{
+            cellsCount -= 1;
+            updateCellsCount();
+        \}
+    \}
+    
+    // voronoi calculation
+    
+    void recalculateVoronoiRegions() \{
+        RectD clipRect = new RectD(-1000, -1000, width+1000, height+1000);
+        List<PointD> centers = centresRef.get().subList(0, cellsCount).stream()
+                .map(p -> new PointD(p.x, p.y)).collect(Collectors.toList());
+        VoronoiResults results = Voronoi.findAll(centers.toArray(new PointD\[0\]), clipRect);
+
+        PointD\[\]\[\] regions = results.voronoiRegions();
+        for(int i = 0; i<regions.length; ++i) \{
+            cells.get(i).polygon = Arrays.asList(regions\[i\])
+                    .stream()
+                    .map(p -> new PVector(p.x, p.y))
+                    .collect(Collectors.toList());
+        \}
+    \}
+
+    // Data encoded as following: 
+    // int: cellsCount
+    // for each cell:
+    //   int: centre.x
+    //   int: centre.y
+    //   int: vertices count
+    //   for each vertex:
+    //     int: vertex.x
+    //     int: vertex.y
+    PBytes encodeVoronoiData() \{
+        try (PBytes.OutputStream os = new PBytes.OutputStream()) \{
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeInt(cellsCount);
+            for(int i=0; i<cellsCount; ++i) \{
+                PVector centre = centresRef.get().get(i);
+                dos.writeDouble(centre.x);
+                dos.writeDouble(centre.y);
+                Cell cell = cells.get(i);
+                dos.writeInt(cell.polygon.size());
+                cell.polygon.forEach(v -> \{
+                    try \{
+                        dos.writeDouble(v.x);
+                        dos.writeDouble(v.y);
+                    \} catch (IOException ex) \{
+                        throw new RuntimeException(ex);
+                    \}
+                \});
+            \}
+            dos.flush();
+            PBytes bytes = os.toBytes();
+            dos.close();
+            return bytes;
+        \} catch (Exception ex) \{
+            log(ERROR, \"Voronoi data encoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+
+    
+    // Sending and receiving all properties (for using with control element)
+    
+    void sendProperties() \{
+        try (PBytes.OutputStream os = new PBytes.OutputStream()) \{
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeInt(movements.ordinal());
+            dos.writeDouble(movementSpeed);
+            dos.writeDouble(timeToMove);
+            dos.writeInt(cellsCount);
+            PBytes bytes = os.toBytes();
+            propertiesOut.send(bytes);
+            dos.close();
+        \} catch (Exception ex) \{
+            log(ERROR, \"Properties encoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+
+    void receiveProperties(PBytes bytes) \{
+        DataInputStream dis = new DataInputStream(bytes.asInputStream());
+        try \{
+            if(dis.available() > 0) \{
+                int newMovements = dis.readInt();
+                if (newMovements >= 0 && newMovements < Movements.values().length) \{
+                    movements = Movements.values()\[newMovements\];
+                \}
+                double newMovementSpeed = dis.readDouble();
+                if (newMovementSpeed >= 0) \{
+                    movementSpeed = newMovementSpeed;                    
+                \}
+                double newTimeToMove = dis.readDouble();
+                if (newTimeToMove >= 0) \{
+                    timeToMove = newTimeToMove;                    
+                \}
+                int newCellsCount = dis.readInt();
+                if (newCellsCount > 2 && newCellsCount <= MAX_CELLS_COUNT) \{
+                    cellsCount = newCellsCount;
+                    updateCellsCount();
+                \}
+                dis.close();
+            \}
+        \} catch (IOException ex) \{
+            log(ERROR, \"Properteies decoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+    
+    // Cell container
+
+    class Cell \{
+        final int no;
+        final Property moveX;
+        final Property moveY;
+        List<PVector> polygon;
+        
+        Cell(int no, Property moveX, Property moveY) \{
+            this.no = no;
+            this.moveX = moveX;
+            this.moveY = moveY;
+        \}
+        
+        double x() \{
+            return moveX.getDouble();
+        \}
+        
+        double y() \{
+            return moveY.getDouble();
+        \}
+        
+        void startMovingTo(double x, double y, double timeToMove) \{
+            moveX.to(x).in(timeToMove).easing(Easing.cubicOut);
+            moveY.to(y).in(timeToMove).easing(Easing.cubicOut);
+        \}
+        
+        void jumpTo(double x, double y) \{
+            moveX.set(x);
+            moveY.set(y);
+        \}
+        
+        PVector centre() \{
+            return centresRef.get().get(no);
+        \}
+        
+        List<PVector> polygon() \{
+            return polygon;
+        \}
+    \}
+"
+    .movement-speed 19.988071138000002
+    .time-to-move 1.0011928862000001
+    .cells-count 12
+    .width 1920
+    .height 1200
+  }
+  @ ./timer-1 core:timing:timer {
+    #%graph.x -1071
+    #%graph.y -436
+    .period 2
+  }
+  @ ./clouds core:container {
+    #%graph.x -215
+    #%graph.y -483
+    #%praxis.version 4.1.1
+    @ ./warping video:gl:p2d {
+      #%graph.x 364
+      #%graph.y 100
+      .code "import java.awt.Color;
+
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    void updateUniforms() \{
+        shader.set(\"time\", millis()/2);
+        shader.set(\"resolution\", width, height);
+    \}
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        updateUniforms();
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+"
+      .fragment "// Author @patriciogv - 2015
+// http://patriciogonzalezvivo.com
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform vec2 resolution;
+uniform vec2 mouse;
+uniform float time;
+uniform vec2 redCell = \{-1.0, -1.0\};
+
+float random (in vec2 _st) \{
+    return fract(sin(dot(_st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+\}
+
+// Based on Morgan McGuire @morgan3d
+// https://www.shadertoy.com/view/4dS3Wd
+float noise (in vec2 _st) \{
+    vec2 i = floor(_st);
+    vec2 f = fract(_st);
+
+    // Four corners in 2D of a tile
+    float a = random(i);
+    float b = random(i + vec2(1.0, 0.0));
+    float c = random(i + vec2(0.0, 1.0));
+    float d = random(i + vec2(1.0, 1.0));
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    return mix(a, b, u.x) +
+            (c - a)* u.y * (1.0 - u.x) +
+            (d - b) * u.x * u.y;
+\}
+
+#define NUM_OCTAVES 5
+
+float fbm ( in vec2 _st) \{
+    float v = 0.0;
+    float a = 0.5;
+    vec2 shift = vec2(100.0);
+    // Rotate to reduce axial bias
+    mat2 rot = mat2(cos(0.5), sin(0.5),
+                    -sin(0.5), cos(0.50));
+    for (int i = 0; i < NUM_OCTAVES; ++i) \{
+        v += a * noise(_st);
+        _st = rot * _st * 2.0 + shift;
+        a *= 0.5;
+    \}
+    return v;
+\}
+
+void main() \{
+    float ktime = pow(time, 0.6); // change power to regulate speed
+    vec2 st = gl_FragCoord.xy/resolution.xy*3.;
+    st.x += pow(time, 0.4);
+//     st += st * abs(sin(time*0.1)*3.0);
+    vec3 color = vec3(0.0);
+
+    vec2 q = vec2(0.);
+    q.x = fbm( st + .0*ktime);
+    q.y = fbm( st + vec2(1.0));
+
+    vec2 r = vec2(0.);
+    r.x = fbm( st + 1.0*q + vec2(1.7,9.2)+ 0.15*ktime );
+    r.y = fbm( st + 1.0*q + vec2(8.3,2.8)+ 0.126*ktime);
+
+    float f = fbm(st+r);
+
+
+    color = mix(vec3(0.101961,0.619608,0.666667),
+                vec3(0.666667,0.666667,0.498039),
+                clamp((f*f)*4.0,0.0,1.0));
+
+    color = mix(color,
+                vec3(0.0,0,0.164706),
+                clamp(length(q),0.0,1.0));
+
+    color = mix(color,
+                vec3(0.666667,1,1),
+                clamp(length(r.x),0.0,1.0));
+
+    gl_FragColor = vec4((f*f*f+.6*f*f+.5*f)*color,1.);
+\}
+"
+    }
+    @ ./squares video:gl:p2d {
+      #%graph.x 364
+      #%graph.y 195
+      .code "import java.awt.Color;
+
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    double rand;
+
+    void updateUniforms() \{
+        shader.set(\"resolution\", width, height);
+        shader.set(\"rand\", rand);
+    \}
+    
+    @T(1) void shuffle() \{
+        rand = random(100);
+    \}
+    
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        updateUniforms();
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+"
+      .fragment "// Author @patriciogv - 2015
+// Title: Mosaic
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform vec2 resolution;
+uniform float rand;
+
+float random (vec2 st) \{
+    return fract(sin(dot(st.xy*rand,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+\}
+
+void main() \{
+    vec2 st = gl_FragCoord.xy/resolution.xy;
+
+    st *= 10.0; // Scale the coordinate system by 10
+    vec2 ipos = floor(st);  // get the integer coords
+    vec2 fpos = fract(st);  // get the fractional coords
+
+    // Assign a random value based on the integer coord
+    vec3 color = vec3(random(ipos));
+
+    // Uncomment to see the subdivided grid
+    // color = vec3(fpos,0.0);
+
+    gl_FragColor = vec4(color,1.0);
+\}"
+    }
+    @ ./lines video:gl:p2d {
+      #%graph.x 364
+      #%graph.y 298
+      .code "import java.awt.Color;
+
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property timer;
+    double angle;
+
+    void updateUniforms() \{
+        shader.set(\"resolution\", width, height);
+        shader.set(\"position\", d(timer));
+        shader.set(\"angle\", angle);
+    \}
+    
+    @T(1) void animate() \{
+        timer.set(0);
+        timer.to(1).in(0.5).linear();
+        //timer.animator().whenDone(p -> animate());
+        angle = random(-PI, PI);
+    \}
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+        //animate();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        updateUniforms();
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+"
+      .fragment "#ifdef GL_ES
+precision mediump float;
+#endif
+
+#define PI 3.14159265359
+
+uniform vec2 resolution;
+uniform vec2 mouse;
+uniform float position;
+uniform float angle;
+
+float random (float seed) \{
+    return fract(sin(dot(vec2(seed, 1.0),
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+\}
+
+float plot(vec2 st, float pct)\{
+  return  smoothstep( pct-0.02, pct, st.y) -
+          smoothstep( pct, pct+0.02, st.y);
+\}
+
+//  Function from Iñigo Quiles
+//  www.iquilezles.org/www/articles/functions/functions.htm
+float cubicPulse( float c, float w, float x )\{
+    x = abs(x - c);
+    if( x>w ) return 0.0;
+    x /= w;
+    return 1.0 - x*x*(3.0-2.0*x);
+\}
+
+mat2 rotate2d(float _angle)\{
+    return mat2(cos(_angle),-sin(_angle),
+                sin(_angle),cos(_angle));
+\}
+
+void main() \{
+    if(1 == position) \{
+        gl_FragColor = vec4(0.0, 0.0, 0.0,1.0);
+        return;
+    \}
+
+    vec2 st = gl_FragCoord.xy/max(resolution.x, resolution.y);
+    st -= vec2(0.5);
+    st *= rotate2d(angle);
+    st += vec2(0.5);
+
+    // Smooth interpolation between 0.1 and 0.9
+    float y = cubicPulse(0.5,0.2,(st.x+position*1.2-0.5));
+    vec3 color = vec3(y);
+
+    float pct = 0; //plot(st,y);
+    color = (1.0-pct)*color+pct*vec3(0.0,1.0,0.0);
+
+    gl_FragColor = vec4(color,1.0);
+\}
+"
+    }
+    @ ./vor-clouds video:gl:p2d {
+      #%graph.x 714
+      #%graph.y 110
+      .code "import org.locationtech.jts.geom.*;
+import java.io.DataInputStream;
+import java.io.IOException;
+
+    static final int MAX_CELLS_COUNT = 80;
+    static final double EDGE_THRESHOLD = 0.1;
+    static final String LAST_INPUT = \"Input per cell, last to the rest\";
+    static final String CYCLE = \"Cycle inputs over cells\";
+    
+    @In(0) PImage in0; @In(1) PImage in1; @In(2) PImage in2; @In(3) PImage in3;
+    @In(4) PImage in4; @In(5) PImage in5; @In(6) PImage in6;
+    @In(7) PImage inEdges;
+    
+    @P(11) @Type.Integer(def = 6, min = 1, max = 7) int cellsInputs;
+    @P(12) @Type.String(allowed = \{CYCLE, LAST_INPUT\}) String inputsToCells;
+    
+    @P(15) @Type.Number(def = 3, min = 0, max = 1000, skew=4) 
+    @OnChange(\"updateCellsFromRawGeometry\") double edgeWidth;
+    
+    @P(17) @Type.Boolean(def = false) boolean drawCells;
+    @P(18) @Type.Boolean(def = false) boolean drawCenters;
+    @P(19) @Type.Boolean(def = true) boolean justColours;
+
+    @AuxIn(100) Data.In<PBytes> voronoiPipeIn;
+    @Inject Data.Sink<PBytes> voronoiSink;
+
+    @AuxIn(101) Input voronoiIn;
+    
+    @OffScreen(persistent = false) PGraphics2D outEdges;
+    @Inject Ref<List<PVector>> coloursRef;
+    
+    GeometryFactory geometryFactory = new GeometryFactory();
+
+    RawGeometry rawGeometry = new RawGeometry();
+    List<Cell> cells = Collections.emptyList();
+    
+    // Initialisation
+
+    @Override public void setup() \{
+        Data.link(voronoiPipeIn, voronoiSink.input());
+        voronoiIn.valuesAs(PBytes.class).link(this::decodeVoronoiData);
+        coloursRef.init(ArrayList::new);
+        coloursRef.apply(list -> \{
+            while(list.size() < MAX_CELLS_COUNT) \{
+                list.add(new PVector(random(255), random(255), random(255)));
+            \}
+        \});
+        noStroke();
+    \}
+    
+    
+    // Drawing
+    
+    @Override public void draw() \{
+        decodeVoronoiData(voronoiSink.process(PBytes.EMPTY));
+        
+        if(edgeWidth > EDGE_THRESHOLD) \{
+            drawEdges();
+        \}
+        if(drawCells) \{
+            drawCells();
+        \}
+        if(drawCenters) \{
+            drawCenters();
+        \}
+    \}
+    
+    void drawCells() \{
+        cells.forEach(cell -> \{
+            blendMode(BLEND);
+            beginShape();
+            if (justColours) \{
+                PVector c = cell.colour();
+                fill(c.x, c.y, c.z);
+            \} else \{
+                texture(cell.in());
+            \}
+            cell.polygon.forEach(v -> vertex(v.x, v.y, v.x, v.y));
+            endShape(CLOSE);
+        \});
+    \}
+    
+    void drawCenters() \{
+        blendMode(BLEND);
+        textSize(10);
+        fill(255);
+        for(int i=0; i<cells.size(); ++i) \{
+            text(i, cells.get(i).centre.x, cells.get(i).centre.y);
+        \}
+    \}
+    
+    void drawEdges() \{
+// For unknown reason below doesn't work            
+//            blendMode(BLEND);
+//            beginShape();
+//            if (justColours) \{
+//                fill(255);
+//            \} else \{
+//                texture(inEdges);
+//            \}
+//            beginShape();
+//            vertex(0, 0, 0, 0);
+//            vertex(width, 0, width, 0);
+//            vertex(width, height, width, height);
+//            vertex(0, height, 0, height);
+//            endShape(CLOSE);
+
+        outEdges.beginDraw();
+        outEdges.blendMode(REPLACE);
+        outEdges.strokeWeight(edgeWidth);
+        outEdges.fill(255);
+        outEdges.noStroke();
+        outEdges.rect(0, 0, width, height);
+
+        if (!justColours) \{
+            outEdges.blendMode(MULTIPLY);
+            outEdges.image(inEdges, 0, 0);
+        \}
+        outEdges.endDraw();
+        blendMode(ADD);
+        image(outEdges, 0, 0);
+    \}
+   
+    
+    
+    // Decode, and transform voronoi data
+    
+    
+    
+    
+    void decodeVoronoiData(PBytes bytes) \{
+        DataInputStream dis = new DataInputStream(bytes.asInputStream());
+        try \{
+            if(dis.available()>0) \{
+                int cellsCount = dis.readInt();
+                List<PVector> centres = new ArrayList<>();
+                List<List<PVector>> polygons = new ArrayList<>();
+                for (int i=0; i<cellsCount; ++i) \{
+                    centres.add(new PVector(dis.readDouble(), dis.readDouble()));
+                    int verticesCount = dis.readInt();
+                    List<PVector> polygon = new ArrayList<>();
+                    for (int j=0; j<verticesCount; ++j) \{
+                        polygon.add(new PVector(dis.readDouble(), dis.readDouble()));
+                    \}
+                    polygons.add(polygon);
+                \}
+                dis.close();
+
+                rawGeometry = new RawGeometry(centres, polygons);
+                updateCellsFromRawGeometry();
+            \}
+        \} catch (IOException ex) \{
+            log(ERROR, \"Voronoi data decoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+        
+    void updateCellsFromRawGeometry() \{
+        List<Cell> cells = new ArrayList<>();
+        for(int i=0; i<rawGeometry.centres.size(); ++i) \{
+            List<PVector> polygon = rawGeometry.polygons.get(i);
+            if (null == polygon || polygon.isEmpty()) \{
+                log(WARNING, \"Received polygon with no vertices. Cell no \" + i);
+            \} else \{
+                cells.add(new Cell(
+                        i, 
+                        rawGeometry.centres.get(i), 
+                        offsetPolygon(i, polygon)));
+            \}
+        \}
+        this.cells = cells;
+    \}
+    
+    List<PVector> offsetPolygon(int cellNo, List<PVector> polygon) \{
+        if (edgeWidth < EDGE_THRESHOLD) \{
+            return polygon;
+        \}
+        
+        List<PVector> originalVertices = new ArrayList<>(polygon);
+        // close polygon - jts requirement
+        originalVertices.add(originalVertices.get(0));
+        
+        Coordinate\[\] coordinates = originalVertices.stream()
+                .map(v -> new Coordinate(v.x, v.y))
+                .collect(Collectors.toList())
+                .toArray(new Coordinate\[0\]);
+        Polygon jtsPolygon = geometryFactory.createPolygon(coordinates); 
+        Geometry geometry = jtsPolygon.buffer(-edgeWidth/2);
+        Coordinate\[\] innerCoordinates = geometry.getBoundary().getCoordinates();
+        return Arrays.asList(innerCoordinates)
+                .subList(0, max(0, innerCoordinates.length-1))
+                .stream()
+                .map(c -> new PVector(c.x, c.y))
+                .collect(Collectors.toList());
+    \}
+
+
+    
+    // Cell container
+
+    class Cell \{
+        final int no;
+        final PVector centre;
+        final List<PVector> polygon;
+
+        public Cell(int no, PVector centre, List<PVector> polygon) \{
+            this.no = no;
+            this.centre = centre;
+            this.polygon = polygon;
+        \}
+    
+        PImage in() \{
+            PImage\[\] ins = \{ in0, in1, in2, in3, in4, in5, in6 \};
+            if(LAST_INPUT.equals(inputsToCells)) \{
+                return ins\[min(no, cellsInputs-1)\];
+            \} else \{ // if CYCLE
+                return ins\[no % cellsInputs\];
+            \}
+        \}
+        
+        PVector colour() \{
+            return coloursRef.get().get(no);
+        \}
+    \}
+    
+    class RawGeometry \{
+        final List<PVector> centres;
+        final List<List<PVector>> polygons;
+
+        public RawGeometry() \{
+            centres = Collections.emptyList();
+            polygons = Collections.emptyList();
+        \}
+
+        public RawGeometry(List<PVector> centres, List<List<PVector>> polygons) \{
+            this.centres = centres;
+            this.polygons = polygons;
+        \}
+    \}
+"
+      .cells-inputs 3
+      .edge-width 4
+      .draw-cells true
+      .just-colours false
+    }
+    @ ./timer-2 core:timing:timer {
+      #%graph.x 133
+      #%graph.y 298
+      .period 2
+    }
+    @ ./timer-3 core:timing:timer {
+      #%graph.x 133
+      #%graph.y 195
+      .period .5
+    }
+    @ ./out video:container:out {
+      #%graph.x 983
+      #%graph.y 310
+    }
+    @ ./in core:container:in {
+      #%graph.x 530
+      #%graph.y 510
+    }
+    @ ./control core:custom {
+      #%graph.x 1157
+      #%graph.y 104
+      .code "import java.io.DataOutputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+
+
+    final Movements MOVEMENTS = Movements.all;
+    final double MOVEMENT_SPEED = 20;
+    final double TIME_TO_MOVE = 1;
+    final int CELLS_COUNT = 12;
+    final double TRANSITION_TIME = 10;
+    
+    //@P(0) @Transient @ReadOnly
+    Movements currentMovements;
+    //@P(1) @Transient @ReadOnly
+    double currentMovementSpeed;
+    //@P(2) @Transient @ReadOnly
+    double currentTimeToMove;
+    //@P(3) @Transient @ReadOnly
+    int currentCcellsCount;
+
+    @P(10) @ReadOnly @Transient
+    Movements newMovements;
+    @P(11) @ReadOnly @Transient @Type.Number
+    Property newMovementSpeed;
+    @P(12) @ReadOnly @Transient @Type.Number
+    Property newTimeToMove;
+    @P(13) @ReadOnly @Transient @Type.Integer
+    Property newCellsCount;
+    
+    @P(20) @ReadOnly @Transient @Type.Number
+    Property transition;
+    
+    @Out(100) Output propertiesOut;
+    @AuxIn(100) @ReadOnly Input propertiesIn;
+    
+    @Out(200) Output xFade;
+    
+    @Override
+    public void init() \{
+        propertiesIn.valuesAs(PBytes.class).link(this::receiveProperties);
+        newMovements = MOVEMENTS;
+        newMovementSpeed.set(MOVEMENT_SPEED);
+        newTimeToMove.set(TIME_TO_MOVE);
+        newCellsCount.set(CELLS_COUNT);
+        transition.set(0);
+    \}
+    
+    @T(0)
+    void activate() \{
+        newMovementSpeed.set(currentMovementSpeed).to(MOVEMENT_SPEED).in(TRANSITION_TIME);
+        newTimeToMove.set(currentTimeToMove).to(TIME_TO_MOVE).in(TRANSITION_TIME);
+        newCellsCount.set(currentCcellsCount).to(CELLS_COUNT).in(TRANSITION_TIME);
+        transition.set(100).to(0).in(TRANSITION_TIME);
+        xFade.send();
+    \}
+    
+    @Override
+    public void update() \{
+        if(transition.isAnimating()) \{
+            if(d(transition) < TRANSITION_TIME/2) \{
+                newMovements = MOVEMENTS;
+            \}
+            send();
+        \}
+    \}
+    
+    void send() \{
+        try (PBytes.OutputStream os = new PBytes.OutputStream()) \{
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeInt(newMovements.ordinal());
+            dos.writeDouble(d(newMovementSpeed));
+            dos.writeDouble(d(newTimeToMove));
+            dos.writeInt(i(newCellsCount));
+            PBytes bytes = os.toBytes();
+            propertiesOut.send(bytes);
+            dos.close();
+        \} catch (Exception ex) \{
+            log(ERROR, \"Properties encoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+
+    void receiveProperties(PBytes bytes) \{
+        DataInputStream dis = new DataInputStream(bytes.asInputStream());
+        try \{
+            if(dis.available() > 0) \{
+                currentMovements = Movements.values()\[dis.readInt()\];
+                currentMovementSpeed = dis.readDouble();
+                currentTimeToMove = dis.readDouble();
+                currentCcellsCount = dis.readInt();
+                dis.close();
+            \}
+        \} catch (IOException ex) \{
+            log(ERROR, \"Properteies decoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+    
+    enum Movements \{
+        all, oneByOne, randomly, unset
+    \};
+"
+    }
+    @ ./properties-send core:routing:send {
+      #%graph.x 1445
+      #%graph.y 128
+      .address /video/voronoi-generator.properties-in
+    }
+    @ ./x-fader-send core:routing:send {
+      #%graph.x 1445
+      #%graph.y 179
+      .address /video/x-fader.to-clouds
+    }
+    @ ./properties-in core:property {
+      #%graph.x 944
+      #%graph.y 154
+      .code "
+
+    @In(0) @Transient Input in;
+
+    @Out(0) Output out;
+    
+    @Override
+    public void init() \{
+        in.valuesAs(PBytes.class).link(out::send);
+    \}
+    
+    @Override
+    public void starting() \{
+    \}
+"
+    }
+    ~ ./warping!out ./vor-clouds!in-0
+    ~ ./lines!out ./vor-clouds!in-edges
+    ~ ./warping!out ./vor-clouds!in-1
+    ~ ./warping!out ./vor-clouds!in-2
+    ~ ./squares!out ./vor-clouds!in-2
+    ~ ./timer-2!out ./lines!animate
+    ~ ./warping!out ./vor-clouds!in-edges
+    ~ ./timer-3!out ./squares!shuffle
+    ~ ./vor-clouds!out ./out!in
+    ~ ./in!out ./vor-clouds!voronoi-in
+    ~ ./control!properties-out ./properties-send!in
+    ~ ./control!x-fade ./x-fader-send!in
+    ~ ./properties-in!out ./control!properties-in
+  }
+  @ ./bw core:container {
+    #%graph.x -215
+    #%graph.y -596
+    #%praxis.version 4.1.1
+    @ ./vor-bw video:gl:p2d {
+      #%graph.x 1185
+      #%graph.y 42
+      .code "import org.locationtech.jts.geom.*;
+import java.io.DataInputStream;
+import java.io.IOException;
+
+    static final int MAX_CELLS_COUNT = 80;
+    static final double EDGE_THRESHOLD = 0.1;
+    static final String LAST_INPUT = \"Input per cell, last to the rest\";
+    static final String CYCLE = \"Cycle inputs over cells\";
+    
+    @In(0) PImage in0; @In(1) PImage in1; @In(2) PImage in2; @In(3) PImage in3;
+    @In(4) PImage in4; @In(5) PImage in5; @In(6) PImage in6;
+    @In(7) PImage inEdges;
+    
+    @P(11) @Type.Integer(def = 6, min = 1, max = 7) int cellsInputs;
+    @P(12) @Type.String(allowed = \{CYCLE, LAST_INPUT\}) String inputsToCells;
+    
+    @P(15) @Type.Number(def = 3, min = 0, max = 1000, skew=4) 
+    @OnChange(\"updateCellsFromRawGeometry\") double edgeWidth;
+    
+    @P(17) @Type.Boolean(def = false) boolean drawCells;
+    @P(18) @Type.Boolean(def = false) boolean drawCenters;
+    @P(19) @Type.Boolean(def = true) boolean justColours;
+
+    @AuxIn(100) Data.In<PBytes> voronoiPipeIn;
+    @Inject Data.Sink<PBytes> voronoiSink;
+
+    @AuxIn(101) Input voronoiIn;
+    
+    @OffScreen(persistent = false) PGraphics2D outEdges;
+    @Inject Ref<List<PVector>> coloursRef;
+    
+    GeometryFactory geometryFactory = new GeometryFactory();
+
+    RawGeometry rawGeometry = new RawGeometry();
+    List<Cell> cells = Collections.emptyList();
+    
+    // Initialisation
+
+    @Override public void setup() \{
+        Data.link(voronoiPipeIn, voronoiSink.input());
+        voronoiIn.valuesAs(PBytes.class).link(this::decodeVoronoiData);
+        coloursRef.init(ArrayList::new);
+        coloursRef.apply(list -> \{
+            while(list.size() < MAX_CELLS_COUNT) \{
+                list.add(new PVector(random(255), random(255), random(255)));
+            \}
+        \});
+        noStroke();
+    \}
+    
+    
+    // Drawing
+    
+    @Override public void draw() \{
+        decodeVoronoiData(voronoiSink.process(PBytes.EMPTY));
+        
+        if(edgeWidth > EDGE_THRESHOLD) \{
+            drawEdges();
+        \}
+        if(drawCells) \{
+            drawCells();
+        \}
+        if(drawCenters) \{
+            drawCenters();
+        \}
+    \}
+    
+    void drawCells() \{
+        cells.forEach(cell -> \{
+            blendMode(BLEND);
+            beginShape();
+            if (justColours) \{
+                PVector c = cell.colour();
+                fill(c.x, c.y, c.z);
+            \} else \{
+                texture(cell.in());
+            \}
+            cell.polygon.forEach(v -> vertex(v.x, v.y, v.x, v.y));
+            endShape(CLOSE);
+        \});
+    \}
+    
+    void drawCenters() \{
+        blendMode(BLEND);
+        textSize(10);
+        fill(255);
+        for(int i=0; i<cells.size(); ++i) \{
+            text(i, cells.get(i).centre.x, cells.get(i).centre.y);
+        \}
+    \}
+    
+    void drawEdges() \{
+// For unknown reason below doesn't work            
+//            blendMode(BLEND);
+//            beginShape();
+//            if (justColours) \{
+//                fill(255);
+//            \} else \{
+//                texture(inEdges);
+//            \}
+//            beginShape();
+//            vertex(0, 0, 0, 0);
+//            vertex(width, 0, width, 0);
+//            vertex(width, height, width, height);
+//            vertex(0, height, 0, height);
+//            endShape(CLOSE);
+
+        outEdges.beginDraw();
+        outEdges.blendMode(REPLACE);
+        outEdges.strokeWeight(edgeWidth);
+        outEdges.fill(255);
+        outEdges.noStroke();
+        outEdges.rect(0, 0, width, height);
+
+        if (!justColours) \{
+            outEdges.blendMode(MULTIPLY);
+            outEdges.image(inEdges, 0, 0);
+        \}
+        outEdges.endDraw();
+        blendMode(ADD);
+        image(outEdges, 0, 0);
+    \}
+   
+    
+    
+    // Decode, and transform voronoi data
+    
+    
+    
+    
+    void decodeVoronoiData(PBytes bytes) \{
+        DataInputStream dis = new DataInputStream(bytes.asInputStream());
+        try \{
+            if(dis.available()>0) \{
+                int cellsCount = dis.readInt();
+                List<PVector> centres = new ArrayList<>();
+                List<List<PVector>> polygons = new ArrayList<>();
+                for (int i=0; i<cellsCount; ++i) \{
+                    centres.add(new PVector(dis.readDouble(), dis.readDouble()));
+                    int verticesCount = dis.readInt();
+                    List<PVector> polygon = new ArrayList<>();
+                    for (int j=0; j<verticesCount; ++j) \{
+                        polygon.add(new PVector(dis.readDouble(), dis.readDouble()));
+                    \}
+                    polygons.add(polygon);
+                \}
+                dis.close();
+
+                rawGeometry = new RawGeometry(centres, polygons);
+                updateCellsFromRawGeometry();
+            \}
+        \} catch (IOException ex) \{
+            log(ERROR, \"Voronoi data decoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+        
+    void updateCellsFromRawGeometry() \{
+        List<Cell> cells = new ArrayList<>();
+        for(int i=0; i<rawGeometry.centres.size(); ++i) \{
+            List<PVector> polygon = rawGeometry.polygons.get(i);
+            if (null == polygon || polygon.isEmpty()) \{
+                log(WARNING, \"Received polygon with no vertices. Cell no \" + i);
+            \} else \{
+                cells.add(new Cell(
+                        i, 
+                        rawGeometry.centres.get(i), 
+                        offsetPolygon(i, polygon)));
+            \}
+        \}
+        this.cells = cells;
+    \}
+    
+    List<PVector> offsetPolygon(int cellNo, List<PVector> polygon) \{
+        if (edgeWidth < EDGE_THRESHOLD) \{
+            return polygon;
+        \}
+        
+        List<PVector> originalVertices = new ArrayList<>(polygon);
+        // close polygon - jts requirement
+        originalVertices.add(originalVertices.get(0));
+        
+        Coordinate\[\] coordinates = originalVertices.stream()
+                .map(v -> new Coordinate(v.x, v.y))
+                .collect(Collectors.toList())
+                .toArray(new Coordinate\[0\]);
+        Polygon jtsPolygon = geometryFactory.createPolygon(coordinates); 
+        Geometry geometry = jtsPolygon.buffer(-edgeWidth/2);
+        Coordinate\[\] innerCoordinates = geometry.getBoundary().getCoordinates();
+        return Arrays.asList(innerCoordinates)
+                .subList(0, max(0, innerCoordinates.length-1))
+                .stream()
+                .map(c -> new PVector(c.x, c.y))
+                .collect(Collectors.toList());
+    \}
+
+
+    
+    // Cell container
+
+    class Cell \{
+        final int no;
+        final PVector centre;
+        final List<PVector> polygon;
+
+        public Cell(int no, PVector centre, List<PVector> polygon) \{
+            this.no = no;
+            this.centre = centre;
+            this.polygon = polygon;
+        \}
+    
+        PImage in() \{
+            PImage\[\] ins = \{ in0, in1, in2, in3, in4, in5, in6 \};
+            if(LAST_INPUT.equals(inputsToCells)) \{
+                return ins\[min(no, cellsInputs-1)\];
+            \} else \{ // if CYCLE
+                return ins\[no % cellsInputs\];
+            \}
+        \}
+        
+        PVector colour() \{
+            return coloursRef.get().get(no);
+        \}
+    \}
+    
+    class RawGeometry \{
+        final List<PVector> centres;
+        final List<List<PVector>> polygons;
+
+        public RawGeometry() \{
+            centres = Collections.emptyList();
+            polygons = Collections.emptyList();
+        \}
+
+        public RawGeometry(List<PVector> centres, List<List<PVector>> polygons) \{
+            this.centres = centres;
+            this.polygons = polygons;
+        \}
+    \}
+"
+      .cells-inputs 5
+      .edge-width 4
+      .draw-cells true
+      .just-colours false
+    }
+    @ ./white video:gl:p2d {
+      #%graph.x 913
+      #%graph.y 535
+      .code "
+
+    @Override
+    public void setup() \{
+        fill(255);
+    \}
+
+    @Override
+    public void draw() \{
+        rect(0, 0, width, height);
+    \}
+"
+    }
+    @ ./black video:gl:p2d {
+      #%graph.x 785
+      #%graph.y 535
+      .code "
+
+    @Override
+    public void setup() \{
+        fill(0);
+    \}
+
+    @Override
+    public void draw() \{
+        rect(0, 0, width, height);
+    \}
+"
+    }
+    @ ./out video:container:out {
+      #%graph.x 1438
+      #%graph.y 242
+    }
+    @ ./in core:container:in {
+      #%graph.x 958
+      #%graph.y 442
+    }
+    @ ./properties-send core:routing:send {
+      #%graph.x 420
+      #%graph.y 760
+      .address /video/voronoi-generator.properties-in
+    }
+    @ ./x-fader-send core:routing:send {
+      #%graph.x 420
+      #%graph.y 810
+      .address /video/x-fader.to-bw
+    }
+    @ ./control core:custom {
+      #%graph.x 8
+      #%graph.y 317
+      .code "import java.io.DataOutputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+
+
+    final Movements MOVEMENTS = Movements.randomly;
+    final double MOVEMENT_SPEED = 10;
+    final double MOVEMENT_SPEED_THIRD = 30;
+    final double MOVEMENT_SPEED_FOURTH = 10;
+    final double TIME_TO_MOVE = 0.4;
+    final double TIME_TO_MOVE_FOURTH = 2;
+    final int CELLS_COUNT = 40;
+    final int CELLS_COUNT_SECOND = 30;
+    final int CELLS_COUNT_THIRD = 80;
+    final int CELLS_COUNT_FOURTH = CELLS_COUNT_SECOND;
+    final double TRANSITION_TIME = 10;
+    
+//    @P(0) @Transient @ReadOnly
+    Movements currentMovements;
+//    @P(1) @Transient @ReadOnly
+    double currentMovementSpeed;
+//    @P(2) @Transient @ReadOnly
+    double currentTimeToMove;
+//    @P(3) @Transient @ReadOnly
+    int currentCellsCount;
+
+    @P(10) @ReadOnly @Transient
+    Movements newMovements;
+    @P(11) @ReadOnly @Transient @Type.Number
+    Property newMovementSpeed;
+    @P(12) @ReadOnly @Transient @Type.Number
+    Property newTimeToMove;
+    @P(13) @ReadOnly @Transient @Type.Integer
+    Property newCellsCount;
+
+    @Out(32) Output blackCells0;
+    @Out(33) Output whiteCells0;
+    @Out(34) Output blackCells1;
+    @Out(35) Output whiteCells1;
+    @Out(40) Output blackEdges;
+    @Out(41) Output whiteEdges;
+    
+    @Out(50) Output strobeMain;
+    @Out(51) Output strobeHeavy;
+    
+    @Inject Property timer;
+
+    @T(30) void whiteEdgesBlackCells() \{
+        whiteEdges.send();
+        blackCells0.send();
+        blackCells1.send();
+        strobeMain.send(false);
+        strobeHeavy.send(false);
+        timer.set(0).to(1).in(5).whenDone(t -> strobeMain.send(true));
+    \}
+
+    @T(31) void blackEdgesSomeWhiteCells() \{
+        strobeMain.send(true);
+        strobeHeavy.send(true);
+        timer.set(0).to(1).in(5).whenDone(t -> \{
+            strobeHeavy.send(false);
+            whiteCells1.send();
+            blackEdges.send();
+        \});
+        blackCells0.send();
+        newCellsCount.set(currentCellsCount).to(CELLS_COUNT_SECOND).in(TRANSITION_TIME);
+        transition.set(100).to(0).in(TRANSITION_TIME);
+    \}
+
+    @T(32) void blackAndStrobe() \{
+        newCellsCount.set(currentCellsCount).to(CELLS_COUNT).in(TRANSITION_TIME);
+        blackEdges.send();
+        blackCells0.send();
+        blackCells1.send();
+        strobeMain.send(true);
+        strobeHeavy.send(false);
+        newCellsCount.set(currentCellsCount).to(CELLS_COUNT_THIRD).in(TRANSITION_TIME);
+        newMovementSpeed.set(currentMovementSpeed).to(MOVEMENT_SPEED_THIRD).in(TRANSITION_TIME);
+        transition.set(100).to(0).in(TRANSITION_TIME);
+    \}
+
+    @T(33) void blackAndQuiet() \{
+        blackEdges.send();
+        blackCells0.send();
+        blackCells1.send();
+        strobeMain.send(true);
+        strobeHeavy.send(true);
+        timer.set(0).to(1).in(2).whenDone(t2 -> \{
+            whiteEdges.send();
+            t2.set(0).to(1).in(5).whenDone(t3 -> \{
+                strobeHeavy.send(false);
+                strobeMain.send(false);
+            \});
+        \});
+        newCellsCount.set(currentCellsCount).to(CELLS_COUNT_FOURTH).in(TRANSITION_TIME);
+        newMovementSpeed.set(currentMovementSpeed).to(MOVEMENT_SPEED_FOURTH).in(TRANSITION_TIME);
+        newTimeToMove.set(currentTimeToMove).to(TIME_TO_MOVE_FOURTH).in(TRANSITION_TIME);
+        transition.set(100).to(0).in(TRANSITION_TIME);
+    \}
+    
+    @P(20) @ReadOnly @Transient @Type.Number
+    Property transition;
+    
+    @AuxOut(100) Output propertiesOut;
+    @AuxIn(100) @ReadOnly Input propertiesIn;
+    
+    @AuxOut(200) Output xFade;
+    
+    
+    @Override
+    public void init() \{
+        propertiesIn.valuesAs(PBytes.class).link(this::receiveProperties);
+        newMovements = MOVEMENTS;
+        newMovementSpeed.set(MOVEMENT_SPEED);
+        newTimeToMove.set(TIME_TO_MOVE);
+        newCellsCount.set(CELLS_COUNT);
+        transition.set(0);
+    \}
+    
+    @T(0)
+    void activate() \{
+        newMovementSpeed.set(currentMovementSpeed).to(MOVEMENT_SPEED).in(TRANSITION_TIME);
+        newTimeToMove.set(currentTimeToMove).to(TIME_TO_MOVE).in(TRANSITION_TIME);
+        newCellsCount.set(currentCellsCount).to(CELLS_COUNT).in(TRANSITION_TIME);
+        transition.set(100).to(0).in(TRANSITION_TIME);
+        xFade.send();
+    \}
+    
+    @Override
+    public void update() \{
+        if(transition.isAnimating()) \{
+            if(d(transition) < TRANSITION_TIME/2) \{
+                newMovements = MOVEMENTS;
+            \}
+            send();
+        \}
+    \}
+    
+    void send() \{
+        try (PBytes.OutputStream os = new PBytes.OutputStream()) \{
+            DataOutputStream dos = new DataOutputStream(os);
+            dos.writeInt(newMovements.ordinal());
+            dos.writeDouble(d(newMovementSpeed));
+            dos.writeDouble(d(newTimeToMove));
+            dos.writeInt(i(newCellsCount));
+            PBytes bytes = os.toBytes();
+            propertiesOut.send(bytes);
+            dos.close();
+        \} catch (Exception ex) \{
+            log(ERROR, \"Properties encoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+
+    void receiveProperties(PBytes bytes) \{
+        DataInputStream dis = new DataInputStream(bytes.asInputStream());
+        try \{
+            if(dis.available() > 0) \{
+                currentMovements = Movements.values()\[dis.readInt()\];
+                currentMovementSpeed = dis.readDouble();
+                currentTimeToMove = dis.readDouble();
+                currentCellsCount = dis.readInt();
+                dis.close();
+            \}
+        \} catch (IOException ex) \{
+            log(ERROR, \"Properteies decoding failure\");
+            throw new RuntimeException(ex);
+        \}
+    \}
+    
+    enum Movements \{
+        all, oneByOne, randomly, unset
+    \};
+"
+    }
+    @ ./properties-in core:property {
+      #%graph.x -242
+      #%graph.y 367
+      .code "
+
+    @In(0) @Transient Input in;
+
+    @Out(0) Output out;
+    
+    @Override
+    public void init() \{
+        in.valuesAs(PBytes.class).link(out::send);
+    \}
+    
+    @Override
+    public void starting() \{
+    \}
+"
+    }
+    @ ./edges video:gl:p2d {
+      #%graph.x 715
+      #%graph.y 317
+      .code "
+
+    @P(0) @Type.Number(min=0, max=255) Property color;
+    
+    @T(10) void black() \{
+        color.set(0);
+    \}
+    
+    @T(11) void white() \{
+        color.set(255);
+    \}
+    
+    @Override
+    public void setup() \{
+    \}
+
+    @Override
+    public void draw() \{
+        fill(d(color));
+        rect(0, 0, width, height);
+    \}
+"
+      .color 255.0
+    }
+    @ ./cells-0 video:gl:p2d {
+      #%graph.x 713
+      #%graph.y 20
+      .code "
+
+    @P(0) @Type.Number(min=0, max=255) Property color;
+    
+    @T(10) void black() \{
+        color.set(0);
+    \}
+    
+    @T(11) void white() \{
+        color.set(255);
+    \}
+    
+    @Override
+    public void setup() \{
+    \}
+
+    @Override
+    public void draw() \{
+        fill(d(color));
+        rect(0, 0, width, height);
+    \}
+"
+    }
+    @ ./cells-1 video:gl:p2d {
+      #%graph.x 713
+      #%graph.y 167
+      .code "
+
+    @P(0) @Type.Number(min=0, max=255) Property color;
+    
+    @T(10) void black() \{
+        color.set(0);
+    \}
+    
+    @T(11) void white() \{
+        color.set(255);
+    \}
+    
+    @Override
+    public void setup() \{
+    \}
+
+    @Override
+    public void draw() \{
+        fill(d(color));
+        rect(0, 0, width, height);
+    \}
+"
+    }
+    @ ./bottom-right core:custom {
+      #%graph.x 1659
+      #%graph.y 1030
+    }
+    @ ./top-left core:custom {
+      #%graph.x -245
+      #%graph.y -657
+    }
+    @ ./strobes core:container {
+      #%graph.x 638
+      #%graph.y -484
+      #%praxis.version 4.1.1
+      @ ./strobe-0 video:gl:p2d {
+        #%graph.x 92
+        #%graph.y -3
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-0 video:container:out {
+        #%graph.x 1301
+        #%graph.y -3
+      }
+      @ ./strobe-1 video:gl:p2d {
+        #%graph.x 232
+        #%graph.y 47
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-1 video:container:out {
+        #%graph.x 1301
+        #%graph.y 47
+      }
+      @ ./strobe-2 video:gl:p2d {
+        #%graph.x 372
+        #%graph.y 97
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-2 video:container:out {
+        #%graph.x 1301
+        #%graph.y 97
+      }
+      @ ./strobe-3 video:gl:p2d {
+        #%graph.x 512
+        #%graph.y 147
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-3 video:container:out {
+        #%graph.x 1301
+        #%graph.y 147
+      }
+      @ ./strobe-4 video:gl:p2d {
+        #%graph.x 652
+        #%graph.y 197
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-4 video:container:out {
+        #%graph.x 1301
+        #%graph.y 197
+      }
+      @ ./strobe-5 video:gl:p2d {
+        #%graph.x 792
+        #%graph.y 247
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-5 video:container:out {
+        #%graph.x 1301
+        #%graph.y 247
+      }
+      @ ./strobe-6 video:gl:p2d {
+        #%graph.x 932
+        #%graph.y 297
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease .2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-6 video:container:out {
+        #%graph.x 1301
+        #%graph.y 297
+      }
+      @ ./strobe-7 video:gl:p2d {
+        #%graph.x 1072
+        #%graph.y 347
+        .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+        .ease 0.2
+        .red 255.0
+        .green 255.0
+        .blue 255.0
+        .brightness 1.0
+        .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+      }
+      @ ./out-7 video:container:out {
+        #%graph.x 1301
+        #%graph.y 347
+      }
+      @ ./in-0 core:container:in {
+        #%graph.x -134
+        #%graph.y -3
+      }
+      @ ./in-1 core:container:in {
+        #%graph.x -134
+        #%graph.y 47
+      }
+      @ ./in-2 core:container:in {
+        #%graph.x -134
+        #%graph.y 97
+      }
+      @ ./in-3 core:container:in {
+        #%graph.x -134
+        #%graph.y 147
+      }
+      @ ./in-4 core:container:in {
+        #%graph.x -134
+        #%graph.y 197
+      }
+      @ ./in-5 core:container:in {
+        #%graph.x -134
+        #%graph.y 247
+      }
+      @ ./in-6 core:container:in {
+        #%graph.x -134
+        #%graph.y 297
+      }
+      @ ./in-7 core:container:in {
+        #%graph.x -134
+        #%graph.y 347
+      }
+      ~ ./strobe-0!out ./out-0!in
+      ~ ./strobe-1!out ./out-1!in
+      ~ ./strobe-2!out ./out-2!in
+      ~ ./strobe-3!out ./out-3!in
+      ~ ./strobe-4!out ./out-4!in
+      ~ ./strobe-5!out ./out-5!in
+      ~ ./strobe-6!out ./out-6!in
+      ~ ./strobe-7!out ./out-7!in
+      ~ ./in-0!out ./strobe-0!strobe
+      ~ ./in-1!out ./strobe-1!strobe
+      ~ ./in-2!out ./strobe-2!strobe
+      ~ ./in-3!out ./strobe-3!strobe
+      ~ ./in-4!out ./strobe-4!strobe
+      ~ ./in-5!out ./strobe-5!strobe
+      ~ ./in-6!out ./strobe-6!strobe
+      ~ ./in-7!out ./strobe-7!strobe
+    }
+    @ ./strobe-control core:timing:timer {
+      #%graph.x 420
+      #%graph.y -509
+      .code "import org.praxislive.video.pgl.code.userapi.PImage;
+
+
+    @Out(0) Output out0;
+    @Out(1) Output out1;
+    @Out(2) Output out2;
+    @Out(3) Output out3;
+    @Out(4) Output out4;
+    @Out(5) Output out5;
+    @Out(6) Output out6;
+    @Out(7) Output out7;
+    @Inject Property four;
+    @P(10) boolean enabled;
+    @P(11) boolean heavyEnabled;
+    
+    void send(Output out) \{
+        if(enabled) \{
+            out.send();
+        \}
+    \}
+    
+    @T(0) public void strobe0() \{ send(out0); \}
+    @T(1) public void strobe1() \{ send(out1); \}
+    @T(2) public void strobe2() \{ send(out2); \}
+    @T(3) public void strobe3() \{ send(out3); \}
+    @T(4) public void strobe4() \{ send(out4); \}
+    @T(5) public void strobe5() \{ send(out5); \}
+    @T(6) public void strobe6() \{ send(out6); \}
+    @T(7) public void strobe7() \{ send(out7); \}
+    @T(8) public void firstFour() \{
+        if(heavyEnabled) \{
+            final double delay = 0.2;
+            four.set(0).to(1).in(delay).whenDone(one -> \{
+                send(out0);
+                one.set(0).to(1).in(delay).whenDone(two -> \{
+                    send(out1);
+                    two.set(0).to(1).in(delay).whenDone(three -> \{
+                        send(out2);
+                        three.set(0).to(1).in(delay).whenDone(four -> \{
+                            send(out3);
+                        \});
+                    \});
+                \});
+            \});
+        \}
+    \}
+    
+"
+    }
+    @ ./trigger-splitter core:custom {
+      #%graph.x 49
+      #%graph.y -550
+      .code "
+    @P(0) @Type.Number(def=0) @ReadOnly Property counter;
+    
+    @Out(0) Output outEach;
+    @Out(1) Output out1Of2;
+    @Out(2) Output out2Of2;
+    @Out(3) Output out1Of4;
+    @Out(4) Output out2Of4;
+    @Out(5) Output out3Of4;
+    @Out(6) Output out4Of4;
+    @Out(7) Output out1Of8;
+    @Out(8) Output out2Of8;
+    @Out(9) Output out3Of8;
+    @Out(10) Output out4Of8;
+    @Out(11) Output out5Of8;
+    @Out(12) Output out6Of8;
+    @Out(13) Output out7Of8;
+    @Out(14) Output out8Of8;
+    
+    @T(0) void trigger() \{
+        int count = i(counter);
+        counter.set((count + 1) % 8);
+        outEach.send();
+        switch(count) \{
+            case 0: out1Of2.send(); out1Of4.send(); out1Of8.send(); break;
+            case 1: out2Of2.send(); out2Of4.send(); out2Of8.send(); break;
+            case 2: out1Of2.send(); out3Of4.send(); out3Of8.send(); break;
+            case 3: out2Of2.send(); out4Of4.send(); out4Of8.send(); break;
+            case 4: out1Of2.send(); out1Of4.send(); out5Of8.send(); break;
+            case 5: out2Of2.send(); out2Of4.send(); out6Of8.send(); break;
+            case 6: out1Of2.send(); out3Of4.send(); out7Of8.send(); break;
+            case 7: out2Of2.send(); out4Of4.send(); out8Of8.send(); break;
+        \}
+    \}
+    
+    @T(1) void reset() \{
+        counter.set(0);
+    \}
+"
+    }
+    @ ./move-cell-timer core:timing:timer {
+      #%graph.x -192
+      #%graph.y -231
+    }
+    @ ./fft-red core:timing:timer {
+      #%graph.x -192
+      #%graph.y -362
+    }
+    ~ ./vor-bw!out ./out!in
+    ~ ./in!out ./vor-bw!voronoi-in
+    ~ ./control!properties-out ./properties-send!in
+    ~ ./control!x-fade ./x-fader-send!in
+    ~ ./properties-in!out ./control!properties-in
+    ~ ./edges!out ./vor-bw!in-edges
+    ~ ./control!white-edges ./edges!white
+    ~ ./cells-0!out ./vor-bw!in-0
+    ~ ./cells-0!out ./vor-bw!in-1
+    ~ ./cells-0!out ./vor-bw!in-2
+    ~ ./cells-0!out ./vor-bw!in-3
+    ~ ./cells-1!out ./vor-bw!in-4
+    ~ ./control!black-edges ./edges!black
+    ~ ./control!white-cells-1 ./cells-1!white
+    ~ ./control!black-cells-1 ./cells-1!black
+    ~ ./control!white-cells-0 ./cells-0!white
+    ~ ./control!black-cells-0 ./cells-0!black
+    ~ ./strobe-control!out-0 ./strobes!in-0
+    ~ ./strobe-control!out-1 ./strobes!in-1
+    ~ ./strobe-control!out-2 ./strobes!in-2
+    ~ ./strobe-control!out-3 ./strobes!in-3
+    ~ ./strobe-control!out-4 ./strobes!in-4
+    ~ ./strobe-control!out-5 ./strobes!in-5
+    ~ ./strobe-control!out-6 ./strobes!in-6
+    ~ ./strobe-control!out-7 ./strobes!in-7
+    ~ ./fft-red!out ./trigger-splitter!trigger
+    ~ ./strobes!out-0 ./vor-bw!in-0
+    ~ ./strobes!out-1 ./vor-bw!in-1
+    ~ ./strobes!out-7 ./vor-bw!in-edges
+    ~ ./trigger-splitter!out-1-of-8 ./strobe-control!strobe-0
+    ~ ./trigger-splitter!out-2-of-8 ./strobe-control!strobe-1
+    ~ ./strobes!out-2 ./vor-bw!in-2
+    ~ ./strobes!out-3 ./vor-bw!in-3
+    ~ ./trigger-splitter!out-each ./strobe-control!strobe-7
+    ~ ./trigger-splitter!out-4-of-8 ./strobe-control!strobe-2
+    ~ ./trigger-splitter!out-5-of-8 ./strobe-control!first-four
+    ~ ./control!strobe-main ./strobe-control!enabled
+    ~ ./control!strobe-heavy ./strobe-control!heavy-enabled
+    ~ ./trigger-splitter!out-6-of-8 ./strobe-control!first-four
+  }
+  @ ./top-left core:custom {
+    #%graph.x -1094
+    #%graph.y -878
+  }
+  @ ./right-bottom core:custom {
+    #%graph.x 856
+    #%graph.y 207
+  }
+  @ ./bw-control core:routing:send {
+    #%graph.x -430
+    #%graph.y -104
+    .address /video/bw/properties-in.in
+  }
+  @ ./clouds-control core:routing:send {
+    #%graph.x -430
+    #%graph.y -54
+    .address /video/clouds/properties-in.in
+  }
+  ~ ./timer-1!out ./voronoi-generator!move-cells
+  ~ ./x-fader!out ./screen!in
+  ~ ./voronoi-generator!voronoi-out ./clouds!in
+  ~ ./voronoi-generator!voronoi-out ./bw!in
+  ~ ./voronoi-generator!properties-out ./bw-control!in
+  ~ ./bw!out ./x-fader!bw
+  ~ ./clouds!out ./x-fader!clouds
+  ~ ./voronoi-generator!properties-out ./clouds-control!in
+}
