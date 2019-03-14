@@ -1,0 +1,337 @@
+@ /eq-control root:video {
+  #%autostart true
+  #%praxis.version 4.1.1
+  .renderer OpenGL
+  .width 960
+  .height 400
+  .fps 60.0
+  @ ./screen video:output {
+    #%graph.x 607
+    #%graph.y -98
+    .always-on-top true
+    .show-cursor true
+  }
+  @ ./eq video:gl:p2d {
+    #%graph.x 424
+    #%graph.y 252
+    .code "
+
+    @P(1) @OnChange(\"processFFT\") float\[\] fftIn;
+    @P(2) @Type.Number(def=0.2, min=0, max=1) double smoothing;
+    
+    @P(5) @Type.Number(def=0.4, min=0.0, max=2, skew=2) Property recoil0;
+    @P(6) @Type.Number(def=0.4, min=0.0, max=2, skew=2) Property recoil1;
+    @P(7) @Type.Number(def=0.4, min=0.0, max=2, skew=2) Property recoil2;
+    
+    float\[\] fft;
+    int maxFFT;
+    final int MAX_FREQ = 10910;
+    double barWidth;
+    
+    private final static int PINGS_COUNT = 3;
+    @P(13) @ReadOnly int\[\] pingBands; // Frequency bands
+    @P(10) @ReadOnly int\[\] pingFreqs;   // Frequencies
+    @P(11) @ReadOnly double\[\] pingPowers;      // Input, raw power
+    @P(12) @ReadOnly int\[\] pingAdjusts; // Adjusted power
+    
+    @Out(0) Output ping0;
+    @Out(1) Output ping1;
+    @Out(2) Output ping2;
+    
+    @Inject Property led0;
+    @Inject Property led1;
+    @Inject Property led2;
+    
+    // TODO: ping coverage (grab 1, 2 or three bands)
+    
+    Output\[\] pings;
+    Property\[\] leds;
+    Property\[\] recoils;
+    
+    
+    @Override
+    public void setup() \{
+//        if(null==pingBands || pingBands.length < 4) \{
+//            reset();
+//        \}
+        pings = new Output\[\] \{ ping0, ping1, ping2 \};
+        leds = new Property\[\] \{ led0, led1, led2 \};
+        recoils = new Property\[\] \{ recoil0, recoil1, recoil2 \};
+        rectMode(CORNERS);
+        ellipseMode(CENTER);
+        strokeWeight(1);
+    \}
+    
+    @T(0) void reset() \{
+        pingBands = new int\[PINGS_COUNT\];
+        pingFreqs = new int\[PINGS_COUNT\];
+        pingPowers = new double\[PINGS_COUNT\];
+        pingAdjusts = new int\[PINGS_COUNT\];
+        Arrays.fill(pingBands, Integer.MAX_VALUE);
+        Arrays.fill(pingFreqs, Integer.MAX_VALUE);
+        Arrays.fill(pingPowers, Double.MAX_VALUE);
+        Arrays.fill(pingAdjusts, Integer.MAX_VALUE);
+    \}
+
+    void processFFT() \{
+        if(null == fft) \{
+            fft = fftIn;
+        \}
+        maxFFT = fftIn.length/2;
+        float\[\] newFFT = new float\[maxFFT\];
+        float s = (float) smoothing;
+        try \{
+            for (int i=0; i<maxFFT; ++i) \{
+                newFFT\[i\] = fft\[i\]*s + fftIn\[i\]*(1-s);
+            \}
+        \} catch (ArrayIndexOutOfBoundsException e) \{
+            log(WARNING, \"Something weird in processFFT()  - try reset button\");
+        \} finally \{
+            fft = newFFT;
+        \}
+    \}
+    
+
+    @Override
+    public void draw() \{
+        if(null == fft || fft.length == 0 || 0 == maxFFT) \{
+            log(WARNING, \"No signal yet received - ignore if doesn't repeat\");
+            return;
+        \}
+        fill(255);
+        stroke(255);
+        boolean mouseHit = false;
+        int eqWidth = width;
+        barWidth = (eqWidth)/(maxFFT);
+        for(int i = 0; i<maxFFT; ++i) \{
+            float amp = fft\[i\];
+            double displayAmp = adjustPower(amp);
+            double left = barWidth*i;
+            double right = barWidth*i + barWidth;
+            rect(left+1, height, right-1, height-displayAmp);
+            if(left <= mouseX && right >= mouseX && displayAmp > height - mouseY) \{
+                mouseHit = true;
+            \}
+            checkPings(amp, i);  // should go to processFFT
+        \}
+        
+        drawPings();
+        
+        fill(255);
+        text(String.format(\"FFT Bands: %d\", maxFFT), width - 130, height - 20);
+        
+        stroke(mouseHit ? 255 : 0, mouseHit ? 0 : 255, 0);
+        fill(mouseHit ? 255 : 0, mouseHit ? 0 : 255, 0);
+        if (pmouseX < eqWidth) \{
+            line(pmouseX, 0, pmouseX, height);
+            line(0, pmouseY, eqWidth, pmouseY);
+            int freqBand = (int) (pmouseX / barWidth);
+            int freq = (int) (MAX_FREQ * (double)pmouseX / eqWidth);
+            int adjustedPowerMouse = height-pmouseY;
+            double powerMouse = deAdjustPower(adjustedPowerMouse);
+            
+            printFreqPowerInfo(pmouseX, pmouseY, 
+                    freqBand, freq, powerMouse, adjustedPowerMouse, null);
+            
+            // update pingsw
+            if(keyPressed) \{
+                int pingNo = -1;
+                if (key == 'q' || key == 'Q') \{
+                    pingNo = 0;
+                \} else if (key == 'w' || key == 'W') \{
+                    pingNo = 1;
+                \} else if (key == 'e' || key == 'E') \{
+                    pingNo = 2;
+                \} 
+                    
+                if(pingNo > -1) \{
+                    text(String.format(\"Ping-%d\",pingNo), pmouseX-50, pmouseY-5);
+                    if (mousePressed) \{
+                        pingBands\[pingNo\] = freqBand;
+                        pingFreqs\[pingNo\] = freq;
+                        pingPowers\[pingNo\] = powerMouse;
+                        pingAdjusts\[pingNo\] = adjustedPowerMouse;
+                    \}
+                \}
+            \}
+        \}
+        
+        noFill();
+        stroke(0, 30, 0);
+        rect(0, 0, width-1, height-1);
+    \}
+    
+    void checkPings(double power, int band) \{
+        try \{
+            for (int i=0; i<PINGS_COUNT; ++i) \{
+                if(power >= pingPowers\[i\] && band == pingBands\[i\] && !leds\[i\].isAnimating()) \{
+                    leds\[i\].set(255).to(0).in(d(recoils\[i\])).easing(Easing.cubicIn);
+                    pings\[i\].send();
+                \}
+            \}
+        \} catch(ArrayIndexOutOfBoundsException e) \{
+            log(WARNING, \"Something weird in checkPings()  - try reset button\");
+        \}
+    \}
+    
+    void drawPings() \{
+        noStroke();
+        for(int i=0; i<PINGS_COUNT; ++i) \{
+            String label;
+            String colorName;
+            if(i==0) \{
+                fill(255, 0 , 0, d(leds\[i\]));
+                label = \"Q\";
+                colorName = \"Red\";
+            \} else if(i==1) \{
+                fill(255, 255 , 0, d(leds\[i\]));
+                label = \"W\";
+                colorName = \"Yellow\";
+            \} else \{
+                fill(0, 255, 255, d(leds\[i\]));
+                label = \"E\";
+                colorName = \"Cyan\";
+            \}
+            if(leds\[i\].isAnimating()) \{
+                ellipse(pingBands\[i\] * barWidth, height-pingAdjusts\[i\], 100, 100);
+                text(String.format(\"=%s=\", label), 
+                        pingBands\[i\] * barWidth - 15, 
+                        height-pingAdjusts\[i\]-i(leds\[i\]));
+            \} else \{
+                if(i==0) \{
+                    fill(255, 0 , 0);
+                \} else if(i==1) \{
+                    fill(255, 255 , 0);
+                \} else \{
+                    fill(0, 255, 255);
+                \}
+                ellipse(pingBands\[i\] * barWidth, height-pingAdjusts\[i\], 7, 7);
+            \}
+            printFreqPowerInfo(20 + i*200, height - 320, 
+                    pingBands\[i\], pingFreqs\[i\], pingPowers\[i\], pingAdjusts\[i\], 
+                    String.format(\"%d %s %s\", i, label, colorName));
+        \}
+    \}
+    
+    void printFreqPowerInfo(int leftX, int bottomY, int freqBand, int freq, double power, int adjustedPower, String label) \{
+        noStroke();
+        if(label != null) \{
+            text(label, leftX + 5, bottomY - 57);
+        \}
+        if(freqBand < Integer.MAX_VALUE) \{
+            text(String.format(\"Band:  %d\", freqBand), leftX + 5, bottomY - 44);
+            text(String.format(\"Frequency:  ~%dHz\", freq), leftX + 5, bottomY - 31);
+            text(String.format(\"Adjusted power:  %.0f\", power), leftX + 5, bottomY - 18);
+            text(String.format(\"Raw power:  %dcans\", adjustedPower), leftX + 5, bottomY - 5);
+        \}
+    \}
+    
+    double adjustPower(double power) \{
+        return (30.0 * log(power * 100.0));
+    \}
+    
+    double deAdjustPower(double adjustedPower) \{
+        return exp(adjustedPower/30.0)/100;
+    \}
+    
+"
+    .fft-in "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
+iJxNNshqUjR4i5Q0+P1gNssZoTaNtfo="
+    .smoothing 0.5
+  }
+  @ ./ping-0 core:routing:send {
+    #%graph.x 626
+    #%graph.y 86
+    .address /video/ping-control.ping-0-red-in
+  }
+  @ ./ping-1 core:routing:send {
+    #%graph.x 626
+    #%graph.y 136
+    .address /video/ping-control.ping-1-yellow-in
+  }
+  @ ./ping-2 core:routing:send {
+    #%graph.x 626
+    #%graph.y 186
+    .address /video/ping-control.ping-2-cyan-in
+  }
+  @ ./start-trigger core:start-trigger {
+    #%graph.x 111
+    #%graph.y 252
+  }
+  @ ./bw-0 core:routing:send {
+    #%graph.x 812
+    #%graph.y 167
+    .address /video/bw/ping-control.ping-0-red-in
+  }
+  @ ./bw-1 core:routing:send {
+    #%graph.x 812
+    #%graph.y 217
+    .address /video/bw/ping-control.ping-1-yellow-in
+  }
+  @ ./bw-2 core:routing:send {
+    #%graph.x 812
+    #%graph.y 267
+    .address /video/bw/ping-control.ping-2-cyan-in
+  }
+  @ ./clouds-0 core:routing:send {
+    #%graph.x 972
+    #%graph.y 317
+    .address /video/clouds/ping-control.ping-0-red-in
+  }
+  @ ./clouds-1 core:routing:send {
+    #%graph.x 972
+    #%graph.y 367
+    .address /video/clouds/ping-control.ping-1-yellow-in
+  }
+  @ ./clouds-2 core:routing:send {
+    #%graph.x 972
+    #%graph.y 417
+    .address /video/clouds/ping-control.ping-2-cyan-in
+  }
+  ~ ./eq!ping-0 ./ping-0!in
+  ~ ./eq!ping-1 ./ping-1!in
+  ~ ./eq!ping-2 ./ping-2!in
+  ~ ./eq!out ./screen!in
+  ~ ./start-trigger!out ./eq!reset
+  ~ ./eq!ping-0 ./bw-0!in
+  ~ ./eq!ping-1 ./bw-1!in
+  ~ ./eq!ping-2 ./bw-2!in
+  ~ ./eq!ping-0 ./clouds-0!in
+  ~ ./eq!ping-1 ./clouds-1!in
+  ~ ./eq!ping-2 ./clouds-2!in
+}

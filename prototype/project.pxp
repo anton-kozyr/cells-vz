@@ -2,6 +2,10 @@ add-libs [file-list "config/libs/*.jar"]
 
 # <<<BUILD>>>
 include [file "video.pxr"]
+include [file "eq-control.pxr"]
+include [file "fft-in.pxr"]
 
 # <<<RUN>>>
 include [file "config/video_autostart"]
+include [file "config/eq-control_autostart"]
+include [file "config/fft-in_autostart"]

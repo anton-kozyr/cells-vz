@@ -1,0 +1,287 @@
+@ /audio root:audio {
+  #%autostart true
+  #%praxis.version 4.1.1
+  .library JACK
+  @ ./output audio:output {
+    #%graph.x 1306
+    #%graph.y 114
+    .channels 1
+  }
+  @ ./fft audio:custom {
+    #%graph.x 614
+    #%graph.y 52
+    .code "import org.jaudiolibs.pipes.Buffer;
+import org.jaudiolibs.pipes.impl.SingleInOut;
+import java.io.*;
+import org.jaudiolibs.pipes.Pipe;
+
+
+    @In(1)
+    AudioIn in;
+    @Out(1)
+    AudioOut out;
+    @AuxOut(1)
+    Output powerData;
+    
+    @P(10) @Type.Integer(def = 16, suggested = \{4, 8, 16, 32, 64\}) 
+    @OnChange(\"init\")
+    int fftPerBlock;
+    
+    @P(100) @ReadOnly
+    int fftSize;
+    
+    float\[\] fftReal;
+    float\[\] fftImag;
+    float\[\] power;
+    float\[\] dataCopy;
+
+    int writeIdx;
+    volatile boolean send;
+    long no = 0;
+    long yes = 0;
+    
+    @Override
+    public void init() \{
+        fftSize = blockSize * fftPerBlock;
+        dataCopy = new float\[fftSize\]; // must be power of 2
+        power = new float\[dataCopy.length / 2\];
+        link(in, new FFT(), out);
+    \}
+
+    @Override
+    public void update() \{
+        if (send) \{
+            send = false;
+            try \{
+                // uncomment to test sending
+                //log(ERROR, \"Sending \" + PBytes.serialize(power));
+                powerData.send(PBytes.serialize(power));
+            \} catch (Exception ex) \{
+                log(ERROR, ex);
+            \}
+        \}
+    \}
+
+    class FFT extends SingleInOut \{
+
+        @Override
+        protected void process(Buffer buffer, boolean bln) \{
+            try \{
+            arrayCopy(buffer.getData(), 0, dataCopy, writeIdx, blockSize);
+            writeIdx += blockSize;
+            if (writeIdx >= dataCopy.length) \{
+                fft(dataCopy, dataCopy.length, true);
+                fftReal = calculateReal(dataCopy, dataCopy.length);
+                fftImag = calculateImaginary(dataCopy, dataCopy.length);
+                for (int i = 0; i < power.length; i++) \{
+                    power\[i\] = (fftReal\[i\] * fftReal\[i\] + fftImag\[i\] * fftImag\[i\]);
+                \}
+                writeIdx = 0;
+                send = true;
+            \}
+            \} catch (ArrayIndexOutOfBoundsException e) \{
+                writeIdx = 0;
+            \}
+        \}
+
+    \}
+
+    protected static void fft(float\[\] data, int n, boolean isign) \{
+        float c1 = 0.5f;
+        float c2, h1r, h1i, h2r, h2i;
+        double wr, wi, wpr, wpi, wtemp;
+        double theta = 3.141592653589793 / (n >> 1);
+        if (isign) \{
+            c2 = -.5f;
+            four1(data, n >> 1, true);
+        \} else \{
+            c2 = .5f;
+            theta = -theta;
+        \}
+        wtemp = Math.sin(.5 * theta);
+        wpr = -2. * wtemp * wtemp;
+        wpi = Math.sin(theta);
+        wr = 1. + wpr;
+        wi = wpi;
+        int np3 = n + 3;
+        for (int i = 2, imax = n >> 2, i1, i2, i3, i4; i <= imax; ++i) \{
+            i4 = 1 + (i3 = np3 - (i2 = 1 + (i1 = i + i - 1)));
+            --i4;
+            --i2;
+            --i3;
+            --i1;
+            h1i = c1 * (data\[i2\] - data\[i4\]);
+            h2r = -c2 * (data\[i2\] + data\[i4\]);
+            h1r = c1 * (data\[i1\] + data\[i3\]);
+            h2i = c2 * (data\[i1\] - data\[i3\]);
+            data\[i1\] = (float) (h1r + wr * h2r - wi * h2i);
+            data\[i2\] = (float) (h1i + wr * h2i + wi * h2r);
+            data\[i3\] = (float) (h1r - wr * h2r + wi * h2i);
+            data\[i4\] = (float) (-h1i + wr * h2i + wi * h2r);
+            wr = (wtemp = wr) * wpr - wi * wpi + wr;
+            wi = wi * wpr + wtemp * wpi + wi;
+        \}
+        if (isign) \{
+            float tmp = data\[0\];
+            data\[0\] += data\[1\];
+            data\[1\] = tmp - data\[1\];
+        \} else \{
+            float tmp = data\[0\];
+            data\[0\] = c1 * (tmp + data\[1\]);
+            data\[1\] = c1 * (tmp - data\[1\]);
+            four1(data, n >> 1, false);
+        \}
+    \}
+
+    private static void four1(float data\[\], int nn, boolean isign) \{
+        int n, mmax, istep;
+        double wtemp, wr, wpr, wpi, wi, theta;
+        float tempr, tempi;
+
+        n = nn << 1;
+        for (int i = 1, j = 1; i < n; i += 2) \{
+            if (j > i) \{
+                // SWAP(data\[j\], data\[i\]);
+                float swap = data\[j - 1\];
+                data\[j - 1\] = data\[i - 1\];
+                data\[i - 1\] = swap;
+                // SWAP(data\[j+1\], data\[i+1\]);
+                swap = data\[j\];
+                data\[j\] = data\[i\];
+                data\[i\] = swap;
+            \}
+            int m = n >> 1;
+            while (m >= 2 && j > m) \{
+                j -= m;
+                m >>= 1;
+            \}
+            j += m;
+        \}
+        mmax = 2;
+        while (n > mmax) \{
+            istep = mmax << 1;
+            theta = 6.28318530717959 / mmax;
+            if (!isign) \{
+                theta = -theta;
+            \}
+            wtemp = Math.sin(0.5 * theta);
+            wpr = -2.0 * wtemp * wtemp;
+            wpi = Math.sin(theta);
+            wr = 1.0;
+            wi = 0.0;
+            for (int m = 1; m < mmax; m += 2) \{
+                for (int i = m; i <= n; i += istep) \{
+                    int j = i + mmax;
+                    tempr = (float) (wr * data\[j - 1\] - wi * data\[j\]);
+                    tempi = (float) (wr * data\[j\] + wi * data\[j - 1\]);
+                    data\[j - 1\] = data\[i - 1\] - tempr;
+                    data\[j\] = data\[i\] - tempi;
+                    data\[i - 1\] += tempr;
+                    data\[i\] += tempi;
+                \}
+                wr = (wtemp = wr) * wpr - wi * wpi + wr;
+                wi = wi * wpr + wtemp * wpi + wi;
+            \}
+            mmax = istep;
+        \}
+    \}
+
+    protected static float\[\] calculateReal(float\[\] spectrum, int length) \{
+        float\[\] real = new float\[length\];
+        real\[0\] = spectrum\[0\];
+        real\[real.length / 2\] = spectrum\[1\];
+        for (int i = 1, j = real.length - 1; i < j; ++i, --j) \{
+            real\[j\] = real\[i\] = spectrum\[2 * i\];
+        \}
+        return real;
+    \}
+
+    protected static float\[\] calculateImaginary(float\[\] spectrum, int length) \{
+        float\[\] imag = new float\[length\];
+        for (int i = 1, j = imag.length - 1; i < j; ++i, --j) \{
+            imag\[i\] = -(imag\[j\] = spectrum\[2 * i + 1\]);
+        \}
+        return imag;
+    \}
+
+
+"
+  }
+  @ ./send core:routing:send {
+    #%graph.x 802
+    #%graph.y 424
+    .address /eq-control/eq.fft-in
+  }
+  @ ./input audio:input {
+    #%graph.x 327
+    #%graph.y 52
+    .channels 1
+  }
+  @ ./osc-for-testing-eq audio:osc {
+    #%graph.x 313
+    #%graph.y 264
+    .code "
+
+    @Out(1) AudioOut out;
+    
+    @UGen Osc osc;
+    @UGen Gain gain;
+    
+    @P(1) @Type.String(allowed = \{\"Sine\", \"Square\", \"Saw\"\}, def = \"Sine\")
+    Property waveform;
+    
+    @P(2) @Type.Number(min=20, max=12000, def=440, skew=2)
+    Property frequency;
+    
+    @P(3) @Type.Number(min=0, max=1, def=1, skew=4)
+    Property level;
+    
+    @Override
+    public void init() \{
+        waveform.linkAs(arg -> Waveform.valueOf(arg.toString()), osc::waveform);
+        frequency.link(osc::frequency);
+        level.link(gain::level);
+        link(osc, gain, out);
+    \}
+    
+"
+    .frequency 10910
+    .level 0.5754509101579716
+  }
+  @ ./muter audio:gain {
+    #%graph.x 1029
+    #%graph.y 63
+    .code "
+
+    @In(1) AudioIn in;
+    @Out(1) AudioOut out;
+    
+    @UGen Gain gain;
+    
+    @P(1) @Type.Number(min=0, max=2, skew=4)
+            Property level;
+    
+    @T(0) void safeMute() \{
+        level.set(0.0001);
+    \}
+    
+    @Override
+    public void init() \{
+        level.set(0.0001);
+        level.link(gain::level);
+        link(in, gain, out);
+    \}
+    
+"
+    .level 1.0E-4
+  }
+  @ ./start-trigger core:start-trigger {
+    #%graph.x 820
+    #%graph.y 301
+  }
+  ~ ./fft!power-data ./send!in
+  ~ ./input!out-1 ./fft!in
+  ~ ./fft!out ./muter!in
+  ~ ./muter!out ./output!in-1
+  ~ ./start-trigger!out ./muter!safe-mute
+}

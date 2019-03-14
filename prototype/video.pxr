@@ -137,11 +137,11 @@
         return inById(0) == in || inById(1) == in;
     \}
 "
-    .mode Difference
   }
   @ ./voronoi-generator core:custom {
     #%graph.x -760
     #%graph.y -436
+    #%graph.comment set width/height
     .code "import org.kynosarges.tektosyne.geometry.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.io.DataOutputStream;
@@ -477,15 +477,16 @@ import java.io.IOException;
         \}
     \}
 "
-    .movement-speed 19.988071138000002
-    .time-to-move 1.0011928862000001
-    .cells-count 12
+    .movements randomly
+    .movement-speed 10.000020149377919
+    .time-to-move 0.40000040462400854
+    .cells-count 40
     .width 1920
     .height 1200
   }
   @ ./timer-1 core:timing:timer {
-    #%graph.x -1071
-    #%graph.y -436
+    #%graph.x -1063
+    #%graph.y -207
     .period 2
   }
   @ ./clouds core:container {
@@ -493,8 +494,8 @@ import java.io.IOException;
     #%graph.y -483
     #%praxis.version 4.1.1
     @ ./warping video:gl:p2d {
-      #%graph.x 364
-      #%graph.y 100
+      #%graph.x 500
+      #%graph.y 154
       .code "import java.awt.Color;
 
 
@@ -504,11 +505,21 @@ import java.io.IOException;
     @Config.Port(false)
     String fragment;
 
+    @Inject Property shift;
+    
+    @P(1) @Type.Number(min=0, max=10, def=2) double gustTime;
+    
     PShader shader;
     
     void updateUniforms() \{
-        shader.set(\"time\", millis()/2);
+        shader.set(\"time\", (millis()+i(shift))/2);
         shader.set(\"resolution\", width, height);
+    \}
+    
+    @T(0) void gust() \{
+        if(!shift.isAnimating()) \{
+            shift.to(d(shift)+10000).in(gustTime).easing(Easing.cubicOut);
+        \}
     \}
 
     @Override
@@ -621,8 +632,8 @@ void main() \{
 "
     }
     @ ./squares video:gl:p2d {
-      #%graph.x 364
-      #%graph.y 195
+      #%graph.x 336
+      #%graph.y 716
       .code "import java.awt.Color;
 
 
@@ -699,8 +710,8 @@ void main() \{
 \}"
     }
     @ ./lines video:gl:p2d {
-      #%graph.x 364
-      #%graph.y 298
+      #%graph.x 29
+      #%graph.y 270
       .code "import java.awt.Color;
 
 
@@ -809,7 +820,7 @@ void main() \{
 "
     }
     @ ./vor-clouds video:gl:p2d {
-      #%graph.x 714
+      #%graph.x 1147
       #%graph.y 110
       .code "import org.locationtech.jts.geom.*;
 import java.io.DataInputStream;
@@ -1052,38 +1063,34 @@ import java.io.IOException;
     \}
 "
       .cells-inputs 3
-      .edge-width 4
+      .edge-width 8
       .draw-cells true
       .just-colours false
     }
     @ ./timer-2 core:timing:timer {
-      #%graph.x 133
-      #%graph.y 298
+      #%graph.x -17
+      #%graph.y 48
       .period 2
     }
     @ ./timer-3 core:timing:timer {
-      #%graph.x 133
-      #%graph.y 195
-      .period .5
+      #%graph.x -17
+      #%graph.y -55
+      .period 2
     }
     @ ./out video:container:out {
-      #%graph.x 983
+      #%graph.x 1330
       #%graph.y 310
     }
-    @ ./in core:container:in {
-      #%graph.x 530
-      #%graph.y 510
-    }
     @ ./control core:custom {
-      #%graph.x 1157
-      #%graph.y 104
+      #%graph.x -433
+      #%graph.y 675
       .code "import java.io.DataOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 
 
-    final Movements MOVEMENTS = Movements.all;
-    final double MOVEMENT_SPEED = 20;
+    final Movements MOVEMENTS = Movements.oneByOne;
+    final double MOVEMENT_SPEED = 40;
     final double TIME_TO_MOVE = 1;
     final int CELLS_COUNT = 12;
     final double TRANSITION_TIME = 10;
@@ -1114,6 +1121,10 @@ import java.io.IOException;
     
     @Out(200) Output xFade;
     
+    @AuxOut(210) Output squaresFadeIn;
+    @AuxOut(220) Output shuffle;
+    
+    
     @Override
     public void init() \{
         propertiesIn.valuesAs(PBytes.class).link(this::receiveProperties);
@@ -1130,7 +1141,26 @@ import java.io.IOException;
         newTimeToMove.set(currentTimeToMove).to(TIME_TO_MOVE).in(TRANSITION_TIME);
         newCellsCount.set(currentCcellsCount).to(CELLS_COUNT).in(TRANSITION_TIME);
         transition.set(100).to(0).in(TRANSITION_TIME);
+        justClouds();
         xFade.send();
+    \}
+    
+    @T(1)
+    void justClouds() \{
+        shuffle.send(false);
+        squaresFadeIn.send(0);
+    \}
+    
+    @T(2)
+    void calmSquares() \{
+        squaresFadeIn.send(1);
+        shuffle.send(false);
+    \}
+    
+    @T(3)
+    void shuffleAndThunder() \{
+        squaresFadeIn.send(1);
+        shuffle.send(true);
     \}
     
     @Override
@@ -1180,19 +1210,14 @@ import java.io.IOException;
     \};
 "
     }
-    @ ./properties-send core:routing:send {
-      #%graph.x 1445
-      #%graph.y 128
-      .address /video/voronoi-generator.properties-in
-    }
     @ ./x-fader-send core:routing:send {
-      #%graph.x 1445
-      #%graph.y 179
+      #%graph.x -58
+      #%graph.y 835
       .address /video/x-fader.to-clouds
     }
     @ ./properties-in core:property {
-      #%graph.x 944
-      #%graph.y 154
+      #%graph.x -651
+      #%graph.y 716
       .code "
 
     @In(0) @Transient Input in;
@@ -1209,19 +1234,670 @@ import java.io.IOException;
     \}
 "
     }
+    @ ./squares-shuffler core:timing:animator {
+      #%graph.x 3
+      #%graph.y 420
+      .code "
+
+    @Inject Property shuffler, recoiler;
+
+    @P(3) @Type.Number(min = 0, max = 60, def = 0)
+    double shuffleTime;
+
+    @P(4) @Type.Number(min = 0, max = 60, def = 0)
+    double recoilTime;
+    
+    @Out(1) Output shuffleOut;
+    @Out(2) Output startOut;
+    @Out(3) Output endOut;
+    
+    @P(1) @Type.Integer int count;
+    
+    @P(2) boolean enabled;
+
+    @T(0) void shuffle() \{
+        if (enabled && !shuffler.isAnimating() && !recoiler.isAnimating()) \{
+            startOut.send();
+            shuffler.set(0).to(count).in(shuffleTime).whenDone(val -> \{
+                val.set(0);
+                recoiler.set(0).to(count).in(recoilTime);
+                endOut.send();
+            \});
+        \}
+    \}
+    
+    int lastBlip = 0;
+
+    @Override
+    public void update() \{
+        if (shuffler.isAnimating()) \{
+            int v = i(shuffler.get());
+            if(lastBlip != v) \{
+                shuffleOut.send();
+                lastBlip = v;
+            \}
+        \}
+    \}
+"
+      .count 40
+      .enabled true
+      .shuffle-time 0.4
+      .recoil-time 0.2
+    }
+    @ ./bottom-right core:custom {
+      #%graph.x 1266
+      #%graph.y 875
+    }
+    @ ./top-left core:custom {
+      #%graph.x -1039
+      #%graph.y -593
+    }
+    @ ./ping-control core:custom {
+      #%graph.x -547
+      #%graph.y 20
+      .code "
+    @AuxOut(20) Output ping0Red;
+    @AuxOut(21) Output ping1Yellow;
+    @AuxOut(22) Output ping2Cyan;
+    @AuxOut(23) Output pingTap;
+    @AuxOut(24) Output pingOsc;
+    
+    @P(30) boolean fftEnabled;
+    @P(33) boolean tapEnabled;
+    @P(34) boolean oscEnabled;
+    
+    @T(10) void ping0RedIn() \{
+        if(fftEnabled) \{
+            ping0Red.send();
+        \}
+    \}
+    @T(11) void ping1YellowIn() \{
+        if(fftEnabled) \{
+            ping1Yellow.send();
+        \}
+    \}
+    @T(12) void ping2CyanIn() \{
+        if(fftEnabled) \{
+            ping2Cyan.send();
+        \}
+    \}
+    @T(13) void pingTapIn() \{
+        if(tapEnabled) \{
+            pingTap.send();
+        \}
+    \}
+    @T(14) void pingOscIn() \{
+        if(oscEnabled) \{
+            pingOsc.send();
+        \}
+    \}
+    @T(20) void enableAll() \{
+        fftEnabled = tapEnabled = oscEnabled = true;
+    \}
+    @T(21) void disableAll() \{
+        fftEnabled = tapEnabled = oscEnabled = false;
+    \}
+    
+    @Override
+    public void init() \{
+
+    \}
+
+    
+    @Override
+    public void update() \{
+
+    \}
+    
+"
+      .fft-enabled true
+      .tap-enabled true
+      .osc-enabled true
+    }
+    @ ./strobe-0 video:gl:p2d {
+      #%graph.x 540
+      #%graph.y -227
+      .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+      .ease 0.3
+      .red 255.0
+      .green 255.0
+      .blue 255.0
+      .brightness 1.0
+      .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+    }
+    @ ./strobe-red video:gl:p2d {
+      #%graph.x 536
+      #%graph.y -508
+      .code "import java.awt.Color;
+
+    @P(0) @Type.Number(min = 0, max = 1) double ease;
+    @P(1) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double red;
+    @P(2) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double green;
+    @P(3) @Type.Number(min = 0, max = 255) @OnChange(\"onRGB\") double blue;
+    @P(4) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double hue;
+    @P(5) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double saturation;
+    @P(6) @Type.Number(min = 0, max = 1) @OnChange(\"onHSV\") double brightness;
+    
+    @Out(1) Output rgb;
+
+    @P(10)
+    @Type.String(mime = GLSL_FRAGMENT_MIME)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+    
+    @Inject Property strobeBrightness;
+
+    @Override
+    public void setup() \{
+        updateShader();
+        noStroke();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER, fragment);
+        \}
+        shader(shader);
+        shader.set(\"brightness\", d(strobeBrightness));
+        shader.set(\"colour\", red, green, blue);
+        rect(0, 0, width, height);
+        resetShader();
+    \}
+    
+    @T(0) void strobe() \{
+        strobeBrightness.set(1);
+        strobeBrightness.to(0).in(ease).easing(Easing.cubicIn);
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+    void onRGB() \{
+        float\[\] hsb = new float\[3\];
+        hsb = Color.RGBtoHSB((int)red, (int)green, (int)blue, hsb);
+        hue = hsb\[0\];
+        saturation = hsb\[1\];
+        brightness = hsb\[2\];
+        sendRGB();
+    \}
+
+    void onHSV() \{
+        Color rgb = Color.getHSBColor((float)hue, (float)saturation, (float)brightness);
+        red = rgb.getRed();
+        green = rgb.getGreen();
+        blue = rgb.getBlue();
+        sendRGB();
+    \}
+    
+    void sendRGB() \{
+        // https://stackoverflow.com/a/17946089
+        int rgbaInt = (round(red) << 24)
+                + (round(green) << 16)
+                + (round(blue) << 8);
+        rgb.send(rgbaInt);
+    \}
+"
+      .ease 0.4
+      .red 243.0
+      .blue 31.0
+      .hue 0.978738009929657
+      .saturation 1.0
+      .brightness 0.9529411792755127
+      .fragment "uniform vec3 colour;
+uniform float brightness;
+
+void main() \{
+    gl_FragColor = vec4(
+        colour.x/255*brightness,
+        colour.y/255*brightness, 
+        colour.z/255*brightness, 
+        1.0
+    );
+\}"
+    }
+    @ ./trigger-splitter core:custom {
+      #%graph.x 307
+      #%graph.y -519
+      .code "
+    @P(0) @Type.Number(def=0) @ReadOnly Property counter;
+    
+    @Out(0) Output outEach;
+    @Out(1) Output out1Of2;
+    @Out(2) Output out2Of2;
+    @Out(3) Output out1Of4;
+    @Out(4) Output out2Of4;
+    @Out(5) Output out3Of4;
+    @Out(6) Output out4Of4;
+    @Out(7) Output out1Of8;
+    @Out(8) Output out2Of8;
+    @Out(9) Output out3Of8;
+    @Out(10) Output out4Of8;
+    @Out(11) Output out5Of8;
+    @Out(12) Output out6Of8;
+    @Out(13) Output out7Of8;
+    @Out(14) Output out8Of8;
+    
+    @T(0) void trigger() \{
+        int count = i(counter);
+        counter.set((count + 1) % 8);
+        outEach.send();
+        switch(count) \{
+            case 0: out1Of2.send(); out1Of4.send(); out1Of8.send(); break;
+            case 1: out2Of2.send(); out2Of4.send(); out2Of8.send(); break;
+            case 2: out1Of2.send(); out3Of4.send(); out3Of8.send(); break;
+            case 3: out2Of2.send(); out4Of4.send(); out4Of8.send(); break;
+            case 4: out1Of2.send(); out1Of4.send(); out5Of8.send(); break;
+            case 5: out2Of2.send(); out2Of4.send(); out6Of8.send(); break;
+            case 6: out1Of2.send(); out3Of4.send(); out7Of8.send(); break;
+            case 7: out2Of2.send(); out4Of4.send(); out8Of8.send(); break;
+        \}
+    \}
+    
+    @T(1) void reset() \{
+        counter.set(0);
+    \}
+"
+    }
+    @ ./properties-out core:routing:send {
+      #%graph.x -66
+      #%graph.y 775
+      .address /video/voronoi-generator.properties-in
+    }
+    @ ./in core:container:in {
+      #%graph.x 1019
+      #%graph.y 528
+    }
+    @ ./noise-warp video:gl:p3d {
+      #%graph.x 741
+      #%graph.y 650
+      .code "
+
+    @P(1) @Type.Number(min = 0, max = 1, def = 0.1)
+    Property amplitude;
+    @P(2) @Type.Number(min = 0, max = 1, def = 0.1)
+    double speed;
+    @P(3) @Type.Number(min = 0, max = 5, def = 2)
+    double frequency;
+    @P(100)
+    Property _time;
+    
+    @T(0) void warp() \{
+        if(!amplitude.isAnimating()) \{
+            amplitude.set(1).to(0).in(1).easeIn();
+        \}
+    \}
+    
+    void updateUniforms() \{
+        if (!_time.isAnimating()) \{
+            _time.set(0).to(86400).in(86400);
+        \}
+        shader.set(\"time\", d(_time));
+        shader.set(\"amplitude\", d(amplitude));
+        shader.set(\"speed\", speed);
+        shader.set(\"frequency\", frequency);
+    \}
+
+    
+    // BOILERPLATE BELOW
+    @In(0)
+    PImage in;
+    @P(0)
+    @Type.String(mime = GLSL_FRAGMENT_MIME, template = DEFAULT_FRAGMENT_SHADER)
+    @OnChange(\"updateShader\")
+    @Config.Port(false)
+    String fragment;
+
+    PShader shader;
+
+    @Override
+    public void setup() \{
+        updateShader();
+    \}
+
+    @Override
+    public void draw() \{
+        if (shader == null) \{
+            shader = createShader(DEFAULT_VERTEX_SHADER,
+                    fragment.isEmpty() ? DEFAULT_FRAGMENT_SHADER : fragment);
+        \}
+        shader(shader);
+        updateUniforms();
+        image(in, 0, 0);
+        resetShader();
+    \}
+
+    void updateShader() \{
+        shader = null;
+    \}
+
+"
+      .fragment "
+varying vec4 vertTexCoord;
+uniform sampler2D texture;
+uniform float time;
+uniform float amplitude;
+uniform float speed;
+uniform float frequency;
+
+            //
+            // Description : Array and textureless GLSL 2D/3D/4D simplex
+            // noise functions.
+            // Author : Ian McEwan, Ashima Arts.
+            // Maintainer : ijm
+            // Lastmod : 20110822 (ijm)
+            // License : Copyright (C) 2011 Ashima Arts. All rights reserved.
+            // Distributed under the MIT License. See LICENSE file.
+            // https://github.com/ashima/webgl-noise
+            //
+
+            vec3 mod289(vec3 x) \{
+             return x - floor(x * (1.0 / 289.0)) * 289.0;
+            \}
+
+            vec4 mod289(vec4 x) \{
+             return x - floor(x * (1.0 / 289.0)) * 289.0;
+            \}
+
+            vec4 permute(vec4 x) \{
+             return mod289(((x*34.0)+1.0)*x);
+            \}
+
+            vec4 taylorInvSqrt(vec4 r)
+            \{
+                return 1.79284291400159 - 0.85373472095314 * r;
+            \}
+                                             
+            float snoise(vec3 v)
+            \{
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0) ;
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                
+                // First corner
+                vec3 i = floor(v + dot(v, C.yyy) );
+                vec3 x0 = v - i + dot(i, C.xxx) ;
+                
+                // Other corners
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min( g.xyz, l.zxy );
+                vec3 i2 = max( g.xyz, l.zxy );
+                
+                // x0 = x0 - 0.0 + 0.0 * C.xxx;
+                // x1 = x0 - i1 + 1.0 * C.xxx;
+                // x2 = x0 - i2 + 2.0 * C.xxx;
+                // x3 = x0 - 1.0 + 3.0 * C.xxx;
+                vec3 x1 = x0 - i1 + C.xxx;
+                vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+                vec3 x3 = x0 - D.yyy; // -1.0+3.0*C.x = -0.5 = -D.y
+                
+                // Permutations
+                i = mod289(i);
+                vec4 p = permute( permute( permute(
+                                                   i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                                          + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                                 + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+                
+                // Gradients: 7x7 points over a square, mapped onto an octahedron.
+                // The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+                float n_ = 0.142857142857; // 1.0/7.0
+                vec3 ns = n_ * D.wyz - D.xzx;
+                
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z); // mod(p,7*7)
+                
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_ ); // mod(j,N)
+                
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                
+                vec4 b0 = vec4( x.xy, y.xy );
+                vec4 b1 = vec4( x.zw, y.zw );
+                
+                //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+                //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+                
+                vec3 p0 = vec3(a0.xy,h.x);
+                vec3 p1 = vec3(a0.zw,h.y);
+                vec3 p2 = vec3(a1.xy,h.z);
+                vec3 p3 = vec3(a1.zw,h.w);
+                
+                //Normalise gradients
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                p0 *= norm.x;
+                p1 *= norm.y;
+                p2 *= norm.z;
+                p3 *= norm.w;
+                
+                // Mix final noise value
+                vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                             dot(p2,x2), dot(p3,x3) ) );
+            \}
+            // end of noise functions
+                                         
+            void main()
+            \{
+                vec2 texCoords = vertTexCoord.st + vec2(
+                    amplitude * (snoise(vec3(frequency * vertTexCoord.st.s, frequency * vertTexCoord.st.t, speed * time))),
+                    amplitude * (snoise(vec3(frequency * vertTexCoord.st.s + 17.0, frequency * vertTexCoord.st.t, speed * time)))
+                );
+                vec2 pos = 0.5 - vertTexCoord.st;  
+                gl_FragColor = texture2D(texture, texCoords); 
+            \}"
+      .amplitude 0.0
+    }
+    @ ./in-fader video:xfader {
+      #%graph.x 536
+      #%graph.y 735
+      .code "
+
+    enum Mode \{Normal, Add, Difference, BitXor\}
+    
+    @In(1) PImage in1;
+    @In(2) PImage in2;
+    
+    @P(1)
+    Mode mode;
+    @P(2) @Type.Number(min = 0, max = 1)
+    Property mix;
+    
+    @P(3) @Type.Number(min = 0, max = 1)
+    @OnChange(\"fade\") Property mixTarget;
+    
+    @P(5) @Type.Number(min=0, max=60)
+    double fadeInOutTime;
+    
+    void fade() \{
+        if((d(mix) > 0.999 && d(mixTarget) < 0.001)
+                || (d(mix) < 0.001 && d(mixTarget) > 0.999)) \{
+            mix.to(d(mixTarget)).in(fadeInOutTime).easeIn();
+        \}
+    \}
+    
+    @Override
+    public void init() \{
+        attachRenderQuery(\"in-1\", rendering -> rendering && d(mix) < 0.999);
+        attachRenderQuery(\"in-2\", rendering -> rendering && d(mix) > 0.001);
+    \}
+    
+    @Override
+    public void draw() \{
+        if (d(mix) < 0.001) \{
+            copy(in1);
+            release(in1);
+        \} else if (d(mix) > 0.999) \{
+            copy(in2);
+            release(in2);
+        \} else if (mode == Mode.Normal) \{
+            blendMode(ADD, 1 - d(mix));
+            image(in1, 0, 0);
+            blendMode(ADD, d(mix));
+            image(in2, 0, 0);
+        \} else \{
+            drawBlended();
+        \}
+    \}
+    
+    void drawBlended() \{
+        PImage fg, bg;
+        double opacity;
+        if (d(mix) > 0.5) \{
+            fg = in1;
+            bg = in2;
+            opacity = (1.0 - d(mix)) * 2;
+        \} else \{
+            fg = in2;
+            bg = in1;
+            opacity = d(mix) * 2;
+        \}
+        copy(bg);
+        release(bg);
+        switch (mode) \{
+            case Difference:
+                blendMode(DIFFERENCE, opacity);
+                break;
+            case BitXor:
+                blendMode(BITXOR, opacity);
+                break;
+            default:
+                blendMode(ADD, opacity);
+                break;
+        \}
+        image(fg, 0, 0);
+    \}
+    
+"
+      .mix 1.0
+      .mix-target 1.0
+      .fade-in-out-time 10
+    }
     ~ ./warping!out ./vor-clouds!in-0
     ~ ./lines!out ./vor-clouds!in-edges
     ~ ./warping!out ./vor-clouds!in-1
     ~ ./warping!out ./vor-clouds!in-2
-    ~ ./squares!out ./vor-clouds!in-2
-    ~ ./timer-2!out ./lines!animate
-    ~ ./warping!out ./vor-clouds!in-edges
-    ~ ./timer-3!out ./squares!shuffle
     ~ ./vor-clouds!out ./out!in
-    ~ ./in!out ./vor-clouds!voronoi-in
-    ~ ./control!properties-out ./properties-send!in
     ~ ./control!x-fade ./x-fader-send!in
     ~ ./properties-in!out ./control!properties-in
+    ~ ./warping!out ./vor-clouds!in-edges
+    ~ ./strobe-0!out ./vor-clouds!in-0
+    ~ ./strobe-0!out ./vor-clouds!in-1
+    ~ ./strobe-0!out ./vor-clouds!in-2
+    ~ ./squares-shuffler!shuffle-out ./squares!shuffle
+    ~ ./trigger-splitter!out-2-of-4 ./strobe-0!strobe
+    ~ ./trigger-splitter!out-3-of-4 ./strobe-0!strobe
+    ~ ./trigger-splitter!out-4-of-4 ./strobe-0!strobe
+    ~ ./trigger-splitter!out-1-of-4 ./strobe-red!strobe
+    ~ ./squares-shuffler!start-out ./trigger-splitter!trigger
+    ~ ./strobe-red!out ./vor-clouds!in-0
+    ~ ./strobe-red!out ./vor-clouds!in-1
+    ~ ./strobe-red!out ./vor-clouds!in-2
+    ~ ./squares-shuffler!start-out ./warping!gust
+    ~ ./control!shuffle ./squares-shuffler!enabled
+    ~ ./ping-control!ping-2-cyan ./lines!animate
+    ~ ./ping-control!ping-1-yellow ./squares-shuffler!shuffle
+    ~ ./control!properties-out ./properties-out!in
+    ~ ./in!out ./vor-clouds!voronoi-in
+    ~ ./noise-warp!out ./vor-clouds!in-2
+    ~ ./in-fader!out ./noise-warp!in
+    ~ ./squares!out ./in-fader!in-2
+    ~ ./control!squares-fade-in ./in-fader!mix-target
+    ~ ./trigger-splitter!out-1-of-4 ./noise-warp!warp
   }
   @ ./bw core:container {
     #%graph.x -215
@@ -1471,7 +2147,7 @@ import java.io.IOException;
     \}
 "
       .cells-inputs 5
-      .edge-width 4
+      .edge-width 1
       .draw-cells true
       .just-colours false
     }
@@ -1526,7 +2202,7 @@ import java.io.IOException;
       .address /video/x-fader.to-bw
     }
     @ ./control core:custom {
-      #%graph.x 8
+      #%graph.x 11
       #%graph.y 317
       .code "import java.io.DataOutputStream;
 import java.io.DataInputStream;
@@ -1806,8 +2482,8 @@ import java.io.IOException;
       #%graph.y 1030
     }
     @ ./top-left core:custom {
-      #%graph.x -245
-      #%graph.y -657
+      #%graph.x -872
+      #%graph.y -730
     }
     @ ./strobes core:container {
       #%graph.x 638
@@ -2697,10 +3373,11 @@ void main() \{
     \}
     
 "
+      .enabled true
     }
     @ ./trigger-splitter core:custom {
-      #%graph.x 49
-      #%graph.y -550
+      #%graph.x -55
+      #%graph.y -532
       .code "
     @P(0) @Type.Number(def=0) @ReadOnly Property counter;
     
@@ -2742,12 +3419,74 @@ void main() \{
 "
     }
     @ ./move-cell-timer core:timing:timer {
-      #%graph.x -192
-      #%graph.y -231
+      #%graph.x -684
+      #%graph.y -452
     }
     @ ./fft-red core:timing:timer {
-      #%graph.x -192
-      #%graph.y -362
+      #%graph.x -572
+      #%graph.y -550
+    }
+    @ ./ping-control core:custom {
+      #%graph.x -390
+      #%graph.y -550
+      .code "
+    @AuxOut(20) Output ping0Red;
+    @AuxOut(21) Output ping1Yellow;
+    @AuxOut(22) Output ping2Cyan;
+    @AuxOut(23) Output pingTap;
+    @AuxOut(24) Output pingOsc;
+    
+    @P(30) boolean fftEnabled;
+    @P(33) boolean tapEnabled;
+    @P(34) boolean oscEnabled;
+    
+    @T(10) void ping0RedIn() \{
+        if(fftEnabled) \{
+            ping0Red.send();
+        \}
+    \}
+    @T(11) void ping1YellowIn() \{
+        if(fftEnabled) \{
+            ping1Yellow.send();
+        \}
+    \}
+    @T(12) void ping2CyanIn() \{
+        if(fftEnabled) \{
+            ping2Cyan.send();
+        \}
+    \}
+    @T(13) void pingTapIn() \{
+        if(tapEnabled) \{
+            pingTap.send();
+        \}
+    \}
+    @T(14) void pingOscIn() \{
+        if(oscEnabled) \{
+            pingOsc.send();
+        \}
+    \}
+    @T(20) void enableAll() \{
+        fftEnabled = tapEnabled = oscEnabled = true;
+    \}
+    @T(21) void disableAll() \{
+        fftEnabled = tapEnabled = oscEnabled = false;
+    \}
+    
+    @Override
+    public void init() \{
+
+    \}
+
+    
+    @Override
+    public void update() \{
+
+    \}
+    
+"
+      .fft-enabled true
+      .tap-enabled true
+      .osc-enabled true
     }
     ~ ./vor-bw!out ./out!in
     ~ ./in!out ./vor-bw!voronoi-in
@@ -2774,7 +3513,6 @@ void main() \{
     ~ ./strobe-control!out-5 ./strobes!in-5
     ~ ./strobe-control!out-6 ./strobes!in-6
     ~ ./strobe-control!out-7 ./strobes!in-7
-    ~ ./fft-red!out ./trigger-splitter!trigger
     ~ ./strobes!out-0 ./vor-bw!in-0
     ~ ./strobes!out-1 ./vor-bw!in-1
     ~ ./strobes!out-7 ./vor-bw!in-edges
@@ -2788,6 +3526,10 @@ void main() \{
     ~ ./control!strobe-main ./strobe-control!enabled
     ~ ./control!strobe-heavy ./strobe-control!heavy-enabled
     ~ ./trigger-splitter!out-6-of-8 ./strobe-control!first-four
+    ~ ./ping-control!ping-0-red ./strobe-control!strobe-0
+    ~ ./ping-control!ping-1-yellow ./strobe-control!strobe-1
+    ~ ./ping-control!ping-2-cyan ./strobe-control!strobe-2
+    ~ ./ping-control!ping-2-cyan ./strobe-control!first-four
   }
   @ ./top-left core:custom {
     #%graph.x -1094
@@ -2807,12 +3549,74 @@ void main() \{
     #%graph.y -54
     .address /video/clouds/properties-in.in
   }
-  ~ ./timer-1!out ./voronoi-generator!move-cells
+  @ ./ping-control core:custom {
+    #%graph.x -1063
+    #%graph.y -721
+    .code "
+    @AuxOut(20) Output ping0Red;
+    @AuxOut(21) Output ping1Yellow;
+    @AuxOut(22) Output ping2Cyan;
+    @AuxOut(23) Output pingTap;
+    @AuxOut(24) Output pingOsc;
+    
+    @P(30) boolean fftEnabled;
+    @P(33) boolean tapEnabled;
+    @P(34) boolean oscEnabled;
+    
+    @T(10) void ping0RedIn() \{
+        if(fftEnabled) \{
+            ping0Red.send();
+        \}
+    \}
+    @T(11) void ping1YellowIn() \{
+        if(fftEnabled) \{
+            ping1Yellow.send();
+        \}
+    \}
+    @T(12) void ping2CyanIn() \{
+        if(fftEnabled) \{
+            ping2Cyan.send();
+        \}
+    \}
+    @T(13) void pingTapIn() \{
+        if(tapEnabled) \{
+            pingTap.send();
+        \}
+    \}
+    @T(14) void pingOscIn() \{
+        if(oscEnabled) \{
+            pingOsc.send();
+        \}
+    \}
+    @T(20) void enableAll() \{
+        fftEnabled = tapEnabled = oscEnabled = true;
+    \}
+    @T(21) void disableAll() \{
+        fftEnabled = tapEnabled = oscEnabled = false;
+    \}
+    
+    @Override
+    public void init() \{
+
+    \}
+
+    
+    @Override
+    public void update() \{
+
+    \}
+    
+"
+    .fft-enabled true
+    .tap-enabled true
+    .osc-enabled true
+  }
   ~ ./x-fader!out ./screen!in
-  ~ ./voronoi-generator!voronoi-out ./clouds!in
   ~ ./voronoi-generator!voronoi-out ./bw!in
   ~ ./voronoi-generator!properties-out ./bw-control!in
   ~ ./bw!out ./x-fader!bw
   ~ ./clouds!out ./x-fader!clouds
   ~ ./voronoi-generator!properties-out ./clouds-control!in
+  ~ ./ping-control!ping-0-red ./voronoi-generator!move-cells
+  ~ ./voronoi-generator!voronoi-out ./clouds!in
 }
