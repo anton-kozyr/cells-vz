@@ -3,8 +3,8 @@
   #%praxis.version 4.1.1
   .library JACK
   @ ./output audio:output {
-    #%graph.x 1306
-    #%graph.y 114
+    #%graph.x 1316
+    #%graph.y 127
     .channels 1
   }
   @ ./fft audio:custom {
@@ -213,8 +213,8 @@ import org.jaudiolibs.pipes.Pipe;
     .address /eq-control/eq.fft-in
   }
   @ ./input audio:input {
-    #%graph.x 327
-    #%graph.y 52
+    #%graph.x 201
+    #%graph.y 27
     .channels 1
   }
   @ ./osc-for-testing-eq audio:osc {
@@ -250,7 +250,7 @@ import org.jaudiolibs.pipes.Pipe;
   }
   @ ./muter audio:gain {
     #%graph.x 1029
-    #%graph.y 63
+    #%graph.y 77
     .code "
 
     @In(1) AudioIn in;
@@ -279,9 +279,32 @@ import org.jaudiolibs.pipes.Pipe;
     #%graph.x 820
     #%graph.y 301
   }
+  @ ./booster audio:gain {
+    #%graph.x 354
+    #%graph.y 27
+    .code "
+
+    @In(1) AudioIn in;
+    @Out(1) AudioOut out;
+    
+    @UGen Gain gain;
+    
+    @P(1) @Type.Number(min=0, max=3)
+            Property level;
+    
+    @Override
+    public void init() \{
+        level.link(gain::level);
+        link(in, gain, out);
+    \}
+    
+"
+    .level 3.0
+  }
   ~ ./fft!power-data ./send!in
-  ~ ./input!out-1 ./fft!in
   ~ ./fft!out ./muter!in
   ~ ./muter!out ./output!in-1
   ~ ./start-trigger!out ./muter!safe-mute
+  ~ ./booster!out ./fft!in
+  ~ ./input!out-1 ./booster!in
 }

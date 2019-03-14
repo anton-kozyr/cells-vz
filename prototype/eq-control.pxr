@@ -6,13 +6,13 @@
   .height 400
   .fps 60.0
   @ ./screen video:output {
-    #%graph.x 607
-    #%graph.y -98
+    #%graph.x 617
+    #%graph.y -108
     .always-on-top true
     .show-cursor true
   }
   @ ./eq video:gl:p2d {
-    #%graph.x 424
+    #%graph.x 426
     #%graph.y 252
     .code "
 
@@ -38,9 +38,9 @@
     @Out(1) Output ping1;
     @Out(2) Output ping2;
     
-    @Inject Property led0;
-    @Inject Property led1;
-    @Inject Property led2;
+    @Inject @Type.Number Property led0;
+    @Inject @Type.Number Property led1;
+    @Inject @Type.Number Property led2;
     
     // TODO: ping coverage (grab 1, 2 or three bands)
     
@@ -51,9 +51,6 @@
     
     @Override
     public void setup() \{
-//        if(null==pingBands || pingBands.length < 4) \{
-//            reset();
-//        \}
         pings = new Output\[\] \{ ping0, ping1, ping2 \};
         leds = new Property\[\] \{ led0, led1, led2 \};
         recoils = new Property\[\] \{ recoil0, recoil1, recoil2 \};
@@ -235,93 +232,108 @@
     \}
     
 "
-    .fft-in "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
-iJxNNshqUjR4i5Q0+P1gNssZoTaNtfo="
+    .fft-in "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
+SKukOL6Ikjjfqd45hwxpOFBoIzhFgSg="
     .smoothing 0.5
   }
   @ ./ping-0 core:routing:send {
-    #%graph.x 626
-    #%graph.y 86
+    #%graph.x 680
+    #%graph.y 34
     .address /video/ping-control.ping-0-red-in
   }
   @ ./ping-1 core:routing:send {
-    #%graph.x 626
-    #%graph.y 136
+    #%graph.x 680
+    #%graph.y 84
     .address /video/ping-control.ping-1-yellow-in
   }
   @ ./ping-2 core:routing:send {
-    #%graph.x 626
-    #%graph.y 186
+    #%graph.x 680
+    #%graph.y 134
     .address /video/ping-control.ping-2-cyan-in
   }
   @ ./start-trigger core:start-trigger {
-    #%graph.x 111
-    #%graph.y 252
+    #%graph.x 175
+    #%graph.y 625
   }
   @ ./bw-0 core:routing:send {
-    #%graph.x 812
-    #%graph.y 167
+    #%graph.x 881
+    #%graph.y 121
     .address /video/bw/ping-control.ping-0-red-in
   }
   @ ./bw-1 core:routing:send {
-    #%graph.x 812
-    #%graph.y 217
+    #%graph.x 881
+    #%graph.y 171
     .address /video/bw/ping-control.ping-1-yellow-in
   }
   @ ./bw-2 core:routing:send {
-    #%graph.x 812
-    #%graph.y 267
+    #%graph.x 881
+    #%graph.y 221
     .address /video/bw/ping-control.ping-2-cyan-in
   }
   @ ./clouds-0 core:routing:send {
-    #%graph.x 972
-    #%graph.y 317
+    #%graph.x 1056
+    #%graph.y 121
     .address /video/clouds/ping-control.ping-0-red-in
   }
   @ ./clouds-1 core:routing:send {
-    #%graph.x 972
-    #%graph.y 367
+    #%graph.x 1056
+    #%graph.y 171
     .address /video/clouds/ping-control.ping-1-yellow-in
   }
   @ ./clouds-2 core:routing:send {
-    #%graph.x 972
-    #%graph.y 417
+    #%graph.x 1056
+    #%graph.y 221
     .address /video/clouds/ping-control.ping-2-cyan-in
+  }
+  @ ./colours-0 core:routing:send {
+    #%graph.x 1257
+    #%graph.y 121
+    .address /video/colours/ping-control.ping-0-red-in
+  }
+  @ ./colours-1 core:routing:send {
+    #%graph.x 1257
+    #%graph.y 171
+    .address /video/colours/ping-control.ping-1-yellow-in
+  }
+  @ ./colours-2 core:routing:send {
+    #%graph.x 1257
+    #%graph.y 221
+    .address /video/colours/ping-control.ping-2-cyan-in
   }
   ~ ./eq!ping-0 ./ping-0!in
   ~ ./eq!ping-1 ./ping-1!in
@@ -334,4 +346,7 @@ iJxNNshqUjR4i5Q0+P1gNssZoTaNtfo="
   ~ ./eq!ping-0 ./clouds-0!in
   ~ ./eq!ping-1 ./clouds-1!in
   ~ ./eq!ping-2 ./clouds-2!in
+  ~ ./eq!ping-0 ./colours-0!in
+  ~ ./eq!ping-1 ./colours-1!in
+  ~ ./eq!ping-2 ./colours-2!in
 }
