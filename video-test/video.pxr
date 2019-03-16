@@ -1,28 +1,26 @@
 @ /video root:video {
   #%autostart true
   #%praxis.version 4.1.1
-  #%graph.comment mpeg4\nudpsrc port=9999 caps = \"application/x-rtp\\,\\ media\\=\\(string\\)video\\,\\ clock-rate\\=\\(int\\)90000\\,\\ encoding-name\\=\\(string\\)MP4V-ES\\,\\ profile-level-id\\=\\(string\\)1\\,\\ payload\\=\\(int\\)96\\,\\ ssrc\\=\\(uint\\)2873740600\\,\\ timestamp-offset\\=\\(uint\\)391825150\\,\\ seqnum-offset\\=\\(uint\\)2980\" ! rtpmp4vdepay ! avdec_mpeg4\n\nmjpeg\nudpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec
+  #%graph.comment Send from MacBook:\n/Library/Frameworks/GStreamer.framework/Commands/gst-launch-1.0 avfvideosrc capture-screen=true ! videoconvert ! videoscale ! video/x-raw,format=I420,width=1920,height=1080,framerate=25/1 ! jpegenc ! rtpjpegpay ! udpsink host=10.0.0.1 port=9999\n\n\nReceive:\nudpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec
   .renderer OpenGL
   .width 1920
   .height 1200
   .fps 60.0
   @ ./screen video:output {
     #%graph.x 862
-    #%graph.y 161
+    #%graph.y 212
     .always-on-top true
     .show-cursor true
   }
   @ ./stream video:capture {
-    #%graph.x 657
-    #%graph.y 111
-    .device "udpsrc port=9999 caps = \"application/x-rtp\\,\\ media\\=\\(string\\)video\\,\\ clock-rate\\=\\(int\\)90000\\,\\ encoding-name\\=\\(string\\)MP4V-ES\\,\\ profile-level-id\\=\\(string\\)1\\,\\ payload\\=\\(int\\)96\\,\\ ssrc\\=\\(uint\\)2873740600\\,\\ timestamp-offset\\=\\(uint\\)391825150\\,\\ seqnum-offset\\=\\(uint\\)2980\" ! rtpmp4vdepay ! avdec_mpeg4"
+    #%graph.x 650
+    #%graph.y 162
+    .device "udpsrc port=9999 ! application/x-rtp,encoding-name=JPEG,payload=26 ! rtpjpegdepay ! jpegdec"
     .resize-mode Scale
-    .source-width 1920
-    .source-height 1080
   }
   @ ./start core:start-trigger {
     #%graph.x 456
-    #%graph.y 111
+    #%graph.y 162
   }
   ~ ./stream!out ./screen!in
   ~ ./start!out ./stream!play

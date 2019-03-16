@@ -299,7 +299,7 @@ import org.jaudiolibs.pipes.Pipe;
     \}
     
 "
-    .level 3.0
+    .level 1.4864864864864864
   }
   ~ ./fft!power-data ./send!in
   ~ ./fft!out ./muter!in

@@ -4,7 +4,7 @@
   @ ./osc-receive core:custom {
     #%graph.x 100
     #%graph.y 242
-    #%graph.comment In SuperCollider run the following:\n\nvar addr = NetAddr.new(\"localhost\", 3333);\nOSCdef(\\tidalplay2, \{\n    arg msg;\n    addr.sendMsg(\"/play2\", *msg);\n\}, '/play2', n);
+    #%graph.comment In SuperCollider run the following:\n\nvar addr = NetAddr.new(\"10.0.0.1\", 3333);\nOSCdef(\\tidalplay2, \{\n    arg msg;\n    addr.sendMsg(\"/play2\", *msg);\n\}, '/play2', n);
     .code "import de.sciss.net.*;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -69,57 +69,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 "
   }
-  @ ./osc-filter core:custom {
-    #%graph.x 361
-    #%graph.y 292
-    .code "
-
-    @P(1) @ReadOnly Value address;
-    @P(2) @ReadOnly Value arg1;
-    @P(3) @ReadOnly Value arg2;
-    @P(4) @ReadOnly Value arg3;
-    @P(5) @ReadOnly Value arg4;
-    @P(6) @ReadOnly Value arg5;
-    @P(7) @ReadOnly Value arg6;
-    @P(8) @ReadOnly Value arg7;
-    @P(9) @ReadOnly Value arg8;
-    @P(10) @ReadOnly Value arg9;
-    
-
-    @In(1) void in(PArray in) \{
-//        log(ERROR, in.toString());
-
-        address = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = arg9 = PString.EMPTY;
-        switch (in.getSize()) \{
-            case 10:
-                arg9 = in.get(9);
-            case 9:
-                arg8 = in.get(8);
-            case 8:
-                arg7 = in.get(7);
-            case 7:
-                arg6 = in.get(6);
-            case 6:
-                arg5 = in.get(5);
-            case 5:
-                arg4 = in.get(4);
-            case 4:
-                arg3 = in.get(3);
-            case 3:
-                arg2 = in.get(2);
-            case 2:
-                arg1 = in.get(1);
-            case 1:
-                address = in.get(0);
-        \}
-        StringBuilder sb = new StringBuilder(\"\[ \");
-        sb.append(in.stream().map(v -> v.toString()).collect(Collectors.joining(\", \")));
-        sb.append(\" \]\");
-        log(ERROR, sb.toString());
-    \}
-
-"
-  }
   @ ./taptempo core:custom {
     #%graph.x 653
     #%graph.y 223
@@ -173,9 +122,35 @@ import java.util.concurrent.ConcurrentLinkedQueue;
         trig.send(1.0);
     \}
 "
-    .period 0.09362655580000001
+    .period 0.111704117
     .playing true
   }
-  ~ ./osc-receive!out ./osc-filter!in
+  @ ./osc-filter1 core:custom {
+    #%graph.x 341
+    #%graph.y 311
+    .code "
+
+    @Out(1) Output oscSignal;
+    
+    @P(1) boolean enabled;
+
+    @In(1) void in(PArray in) \{
+        if(enabled && \"placeholders\".equals(in.get(11).toString())) \{
+            StringBuilder sb = new StringBuilder(\"\[ \");
+            sb.append(in.stream().map(v -> v.toString()).collect(Collectors.joining(\", \")));
+            sb.append(\" \]\");
+//            log(ERROR, sb.toString());
+            oscSignal.send();
+        \}
+    \}
+
+"
+  }
+  @ ./bw-osc core:routing:send {
+    #%graph.x 591
+    #%graph.y 448
+  }
   ~ ./osc-receive!out ./taptempo!tap
+  ~ ./osc-filter1!osc-signal ./bw-osc!in
+  ~ ./osc-receive!out ./osc-filter1!in
 }
